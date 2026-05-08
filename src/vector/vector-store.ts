@@ -1,0 +1,2 @@
+export interface VectorDocument { id: string; content: string; metadata: Record<string, any>; }
+export interface VectorStore { addDocuments(docs: VectorDocument[], embeddings: number[][]): Promise<void>; similaritySearch(queryEmbedding: number[], k: number): Promise<VectorDocument[]>; deleteByIds(ids: string[]): Promise<void>; persist(): Promise<void>; }

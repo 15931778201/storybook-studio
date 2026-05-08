@@ -1,0 +1,1 @@
+export function tokenCount(messages: any[]): number { return messages.reduce((s, m) => s + (m.content?.length || 0) * 0.25, 0); }

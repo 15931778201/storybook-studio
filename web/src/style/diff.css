@@ -1,0 +1,38 @@
+/* diff 编辑器容器 */
+.diff-editor-container {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e8e8e8;
+}
+
+.dark .diff-editor-container {
+  border-color: #434343;
+}
+
+/* Monaco 编辑器背景适配 */
+.diff-editor-container .monaco-editor {
+  background: #ffffff;
+}
+
+.dark .diff-editor-container .monaco-editor {
+  background: #1e1e1e;
+}
+
+/* 确认对话框中的 diff 文本（非 Monaco 降级方案） */
+.confirm-diff-plain {
+  background: #f6f8fa;
+  padding: 16px;
+  border-radius: 6px;
+  max-height: 400px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dark .confirm-diff-plain {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: 1px solid #444;
+}

@@ -1,0 +1,12 @@
+.env
+.agent/backups/
+.agent/logs/
+.agent/memory.json
+.agent/audit.jsonl
+/node_modules/
+dist/
+npm-cache/
+web/node_modules/
+web/dist/
+web/npm-cache/
+bun.lock

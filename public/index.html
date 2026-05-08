@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Agent 对话</title>
+  <style>
+    body { font-family: system-ui; max-width: 800px; margin: 20px auto; }
+    #log { border: 1px solid #ccc; height: 400px; overflow-y: auto; padding: 10px; }
+    .msg { margin: 5px 0; }
+    .user { color: blue; }
+    .agent { color: green; }
+    .diff { white-space: pre; background: #f4f4f4; padding: 5px; font-family: monospace; }
+    .confirm-box { background: #fff3cd; padding: 10px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h2>Agent 对话</h2>
+  <div id="log"></div>
+  <form id="chatForm">
+    <input type="text" id="userInput" placeholder="输入任务..." style="width: 80%;" />
+    <button type="submit">发送</button>
+  </form>
+  <div id="confirmArea"></div>
+
+  <script>
+    const log = document.getElementById('log');
+    const form = document.getElementById('chatForm');
+    const inputField = document.getElementById('userInput');
+    const confirmArea = document.getElementById('confirmArea');
+    let sessionId = 'user-' + Date.now();
+    let pendingConfirm = null;
+
+    function append(role, text) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + role;
+      div.textContent = role + ': ' + text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = inputField.value.trim();
+      if (!input) return;
+      append('user', input);
+      inputField.value = '';
+
+      // 使用 SSE 流式接收
+      const evtSource = new EventSource(`/api/stream/${sessionId}?input=${encodeURIComponent(input)}`);
+      evtSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'text') {
+          append('agent', data.content);
+        } else if (data.type === 'confirm') {
+          // 显示确认按钮
+          pendingConfirm = data;
+          confirmArea.innerHTML = `
+            <div class="confirm-box">
+              <strong>确认执行 ${data.toolName}? </strong>
+              <pre class="diff">${data.diff}</pre>
+              <button onclick="confirmAction(true)">确认</button>
+              <button onclick="confirmAction(false)">拒绝</button>
+            </div>`;
+        } else if (data.type === 'final') {
+          append('agent', data.content);
+          evtSource.close();
+        } else if (data.type === 'error') {
+          append('agent', '❌ ' + data.content);
+          evtSource.close();
+        }
+      };
+      evtSource.onerror = () => {
+        evtSource.close();
+      };
+    });
+
+    window.confirmAction = async (approved) => {
+      if (!pendingConfirm) return;
+      await fetch('/api/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: pendingConfirm.sessionId,
+          toolCallId: pendingConfirm.toolCallId,
+          approved
+        })
+      });
+      confirmArea.innerHTML = '';
+      append('agent', approved ? '✅ 已执行' : '❌ 已拒绝');
+      pendingConfirm = null;
+    };
+  </script>
+</body>
+</html>

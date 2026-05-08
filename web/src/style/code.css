@@ -1,0 +1,66 @@
+/* 代码块样式 */
+.code-block {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 12px 0;
+  position: relative;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dark .code-block {
+  border: 1px solid #333;
+}
+
+/* 行内代码 */
+.inline-code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.dark .inline-code {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f0f0f0;
+}
+
+/* 代码语言标签 */
+.code-language-tag {
+  position: absolute;
+  top: 8px;
+  right: 40px;
+  font-size: 12px;
+  color: #888;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* 复制按钮 */
+.code-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+
+/* 滚动条美化 */
+.code-block::-webkit-scrollbar {
+  height: 6px;
+  background: transparent;
+}
+
+.code-block::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.dark .code-block::-webkit-scrollbar-thumb {
+  background: #666;
+}

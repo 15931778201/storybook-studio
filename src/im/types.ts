@@ -1,0 +1,2 @@
+export interface IMChatMessage { userId: string; userName: string; content: string; channel: 'wecom'|'dingtalk'|'feishu'; raw: any; conversationId?: string; }
+export interface IMResponse { text: string; atUser?: string; }

@@ -1,0 +1,25 @@
+version: "3.8"
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  agent:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
+    depends_on:
+      - redis
+  # 可选：OpenTelemetry Collector + Grafana
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib
+    ports:
+      - "4318:4318"
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3001:3000"

@@ -1,0 +1,35 @@
+:root {
+  --chat-bg: #fafafa;
+  --border-color: #eee;
+}
+
+.dark {
+  --chat-bg: #141414;
+  --border-color: #2c2c2e;
+}
+
+.chat-container {
+  background: var(--chat-bg);
+  border-color: var(--border-color);
+}
+
+/* 基础重置 */
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+.sidebar { background: inherit; }
+.code-block { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 8px; overflow-x: auto; }
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 18px;
+  color: #888;
+}
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .chat-main { width: 100%; }
+  .message-bubble { max-width: 90%; }
+  .input-area { padding: 8px; }
+  .ant-layout-header { padding: 0 8px; }
+  .workspace-tabs .ant-tabs-nav { margin: 0; }
+}
