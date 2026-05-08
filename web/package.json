@@ -1,5 +1,5 @@
 {
-  "name": "agent-web-antdx",
+  "name": "agentkit-web",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,18 +9,16 @@
   "dependencies": {
     "@ant-design/x": "^2.7.0",
     "@ant-design/x-markdown": "^2.7.0",
-    "@ant-design/x-sdk": "^2.7.0",
-    "@monaco-editor/react": "^4.7.0",
-    "@types/dompurify": "^3.2.0",
     "antd": "^6.0.0",
-    "dompurify": "^3.4.2",
-    "highlight.js": "^11.9.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
     "react-markdown": "^9.0.0",
-    "react-router-dom": "^7.15.0",
+    "remark-gfm": "^4.0.0",
     "rehype-highlight": "^7.0.0",
-    "remark-gfm": "^4.0.0"
+    "highlight.js": "^11.9.0",
+    "dompurify": "^3.0.0",
+    "@monaco-editor/react": "^4.6.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",

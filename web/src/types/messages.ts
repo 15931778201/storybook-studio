@@ -12,7 +12,9 @@ export interface ChatMessage {
   content: string;
   steps?: ThinkingStep[];
   timestamp?: number;
-  imageBase64?: string;  // 新增字段
+  imageBase64?: string;
+  contentType?: 'text' | 'plan' | 'decision' | 'pipeline' | 'diff';
+  metadata?: Record<string, any>;
 }
 
 export interface ConfirmRequest {

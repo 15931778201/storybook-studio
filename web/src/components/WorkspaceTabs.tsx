@@ -1,7 +1,8 @@
-import { Tabs, Button, Modal, Input, Space } from 'antd';
+import { Tabs, Button, Modal, Input, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { useChatContext } from '../providers/ChatProvider';
+import '../style/WorkspaceTabs.css';
 
 export default function WorkspaceTabs() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace } = useChatContext();
@@ -12,9 +13,8 @@ export default function WorkspaceTabs() {
   const handleAdd = () => {
     if (newName.trim() && newPath.trim()) {
       addWorkspace(newName.trim(), newPath.trim());
-      setNewName('');
-      setNewPath('');
-      setShowAdd(false);
+      message.success('工作区已添加');
+      setNewName(''); setNewPath(''); setShowAdd(false);
     }
   };
 
@@ -25,38 +25,22 @@ export default function WorkspaceTabs() {
         onChange={setActiveWorkspaceId}
         type="editable-card"
         hideAdd
-        items={workspaces.map((ws) => ({
+        size="small"
+        items={workspaces.map(ws => ({
           key: ws.id,
           label: ws.name,
+          closable: ws.id !== 'default',
         }))}
         tabBarExtraContent={
-          <Button
-            type="text"
-            icon={<PlusOutlined />}
-            onClick={() => setShowAdd(true)}
-          />
+          <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => setShowAdd(true)} />
         }
-        style={{ marginBottom: 0, background: '#fafafa', padding: '0 16px' }}
+        style={{ margin: 0, '.ant-tabs-nav': { marginBottom: 0 } }}
       />
-
-      <Modal
-        title="添加工作区"
-        open={showAdd}
-        onOk={handleAdd}
-        onCancel={() => setShowAdd(false)}
-      >
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Input
-            placeholder="工作区名称"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <Input
-            placeholder="项目路径（如 /path/to/project）"
-            value={newPath}
-            onChange={(e) => setNewPath(e.target.value)}
-          />
-        </Space>
+      <Modal title="添加工作区" open={showAdd} onOk={handleAdd} onCancel={() => setShowAdd(false)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Input placeholder="工作区名称" value={newName} onChange={e => setNewName(e.target.value)} />
+          <Input placeholder="项目路径" value={newPath} onChange={e => setNewPath(e.target.value)} />
+        </div>
       </Modal>
     </>
   );

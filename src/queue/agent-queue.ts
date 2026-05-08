@@ -9,6 +9,7 @@ const connection = new Redis({
 });
 
 export const agentQueue = new Queue('agent-tasks', { connection });
+export const resultCache = new Map<string, string>(); // 简单结果缓存
 
 // Worker 处理任务
 const worker = new Worker('agent-tasks', async (job: Job) => {

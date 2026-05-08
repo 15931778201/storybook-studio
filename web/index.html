@@ -1,21 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <title>Agent 对话 - 专业版</title>
-  <!-- 高亮 CSS 异步加载，不阻塞首屏 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentKit</title>
   <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"></noscript>
-  <style>
-    /* 首屏关键 CSS 内联，避免等待外部样式表 */
-    body { margin:0; background:#f5f5f5; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-    .app-loading { display:flex; align-items:center; justify-content:center; height:100vh; }
-  </style>
 </head>
-<body>
-  <div id="root">
-    <div class="app-loading">🔄 正在加载 Agent …</div>
-  </div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
+<body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
 </html>

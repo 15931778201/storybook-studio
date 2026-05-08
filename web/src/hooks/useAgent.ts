@@ -1,8 +1,16 @@
 import { useState, useRef, useCallback } from 'react';
+import { ThinkingStep } from '../types/messages';
 
 export interface ChatMessage {
+  id?: string;
   role: 'user' | 'agent' | 'system';
   content: string;
+  timestamp?: number;
+  steps?: ThinkingStep[];
+  imageBase64?: string;
+  // 🔥 新增字段
+  contentType?: 'text' | 'plan' | 'decision' | 'pipeline' | 'diff';
+  metadata?: Record<string, any>;
 }
 
 interface ConfirmRequest {

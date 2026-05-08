@@ -1,26 +1,38 @@
-import React, { useState, useCallback, memo } from 'react';
 import { Conversations } from '@ant-design/x';
+import { useCallback, useState } from 'react';
+import { useChatContext } from '../providers/ChatProvider';
 
-const INITIAL_CONVERSATIONS = [{ key: `conv-${Date.now()}`, label: '默认对话' }];
-
-const Sidebar = ({ activeKey, onSelect }: { activeKey: string; onSelect: (key: string) => void }) => {
-  const [items, setItems] = useState(INITIAL_CONVERSATIONS);
+export default function Sidebar() {
+  const { activeConversationId, setActiveConversationId, setMessages } = useChatContext();
+  const [items, setItems] = useState([{ key: activeConversationId, label: '默认对话' }]);
 
   const handleCreate = useCallback(() => {
-    const newConv = { key: `conv-${Date.now()}`, label: '新对话' };
-    setItems(prev => [newConv, ...prev]);
-    onSelect(newConv.key);
-  }, [onSelect]);
+    const newKey = 'conv-' + Date.now();
+    setItems(prev => [{ key: newKey, label: '新对话' }, ...prev]);
+    setActiveConversationId(newKey);
+    setMessages([]);
+  }, [setActiveConversationId, setMessages]);
+
+  const handleDelete = useCallback((key: string) => {
+    setItems(prev => prev.filter(i => i.key !== key));
+    if (key === activeConversationId) {
+      const remaining = items.filter(i => i.key !== key);
+      if (remaining.length > 0) setActiveConversationId(remaining[0].key);
+    }
+  }, [activeConversationId, items, setActiveConversationId]);
 
   return (
     <Conversations
       items={items}
-      activeKey={activeKey}
-      onActiveChange={onSelect}
+      activeKey={activeConversationId}
+      onActiveChange={setActiveConversationId}
       creation={{ onClick: handleCreate }}
       style={{ height: '100%' }}
+      menu={(item) => ({
+        items: [
+          { label: '删除', key: 'delete', danger: true, onClick: () => handleDelete(item.key) },
+        ],
+      })}
     />
   );
-};
-
-export default memo(Sidebar);
+}
