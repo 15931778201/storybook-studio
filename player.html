@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>奔跑小人的雪碧图动画</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(to bottom, #87CEEB, #E0F7FA);
+            margin: 0;
+            overflow: hidden;
+            flex-direction: column;
+        }
+
+        /* 显示单帧的窗口容器 */
+        .runner-container {
+            width: 64px;    /* 单帧宽度 */
+            height: 64px;   /* 单帧高度 */
+            overflow: hidden;
+            position: relative;
+            image-rendering: pixelated; /* 保持像素风格清晰 */
+        }
+
+        /* 承载雪碧图的层 */
+        .sprite-sheet {
+            width: 576px;   /* 雪碧图总宽度 (9列 * 64px) */
+            height: 192px;  /* 雪碧图总高度 (3行 * 64px) */
+            background-image: url('player_tilesheet.png'); /* 请确保你的图片文件名无误 */
+            background-size: 576px 192px;
+            background-repeat: no-repeat;
+            background-position: 0px 0px; /* 初始显示第1行第1帧 */
+
+            /* 动画：0.6s 循环一次，步进跳跃，更接近逐帧动画的体验 */
+            animation: run-animation 0.6s steps(1) infinite;
+        }
+
+        /* 逐帧切换的关键帧动画 */
+        @keyframes run-animation {
+            /* 使用第一行（Y = 0）的奔跑动作 */
+            0% { background-position: 0px 0px; }         /* 第1行第1列 */
+            11.11% { background-position: -64px 0px; }   /* 第1行第2列 */
+            22.22% { background-position: -128px 0px; }  /* 第1行第3列 */
+            33.33% { background-position: -192px 0px; }  /* 第1行第4列 */
+            44.44% { background-position: -256px 0px; }  /* 第1行第5列 */
+            55.55% { background-position: -320px 0px; }  /* 第1行第6列 */
+            66.66% { background-position: -384px 0px; }  /* 第1行第7列 */
+            77.77% { background-position: -448px 0px; }  /* 第1行第8列 */
+            88.88% { background-position: -512px 0px; }  /* 第1行第9列 */
+            100% { background-position: 0px 0px; }       /* 回到起点，形成循环 */
+        }
+
+        .ground {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 20px;
+            background: linear-gradient(to top, #8B4513, #A0522D);
+        }
+    </style>
+</head>
+<body>
+    <div class="runner-container">
+        <div class="sprite-sheet"></div>
+    </div>
+    <div class="ground"></div>
+</body>
+</html>

@@ -1,0 +1,739 @@
+{
+  "bookMeta": {
+    "title": "星星糖列车：兔兔团团出发啦",
+    "subtitle": "一列会跳舞的列车，带你去收集会发光的糖星",
+    "coverUrl": "/storybook/cover.svg",
+    "ageRange": [
+      "3-4",
+      "5-6",
+      "7-8"
+    ],
+    "tags": [
+      "冒险",
+      "友谊",
+      "全动画"
+    ]
+  },
+  "pages": [
+    {
+      "id": "p1",
+      "pageNo": 1,
+      "backgroundUrl": "/storybook/bg1.svg",
+      "narrationAudioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      "elements": [
+        {
+          "id": "p1-title",
+          "type": "text",
+          "x": 26,
+          "y": 54,
+          "width": 324,
+          "height": 78,
+          "style": {
+            "color": "#ffffff",
+            "fontSize": "34px",
+            "fontWeight": "800",
+            "textShadow": "0 4px 10px #6f47aa88",
+            "letterSpacing": "2px",
+            "animation": "rainbowGlow 2.6s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "星星糖列车，出发！"
+          }
+        },
+        {
+          "id": "p1-subtitle",
+          "type": "text",
+          "x": 42,
+          "y": 138,
+          "width": 290,
+          "height": 64,
+          "style": {
+            "color": "#fffdf8",
+            "fontSize": "21px",
+            "fontWeight": "600",
+            "animation": "floatY 3.2s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "小兔团团把糖星装进背包"
+          }
+        },
+        {
+          "id": "p1-rabbit",
+          "type": "image",
+          "x": 94,
+          "y": 244,
+          "width": 180,
+          "height": 194,
+          "style": {
+            "animation": "floatY 2.7s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/rabbit.svg",
+            "alt": "团团"
+          }
+        },
+        {
+          "id": "p1-bag",
+          "type": "image",
+          "x": 248,
+          "y": 332,
+          "width": 94,
+          "height": 94,
+          "style": {
+            "animation": "wiggle 1.8s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/starbag.svg",
+            "alt": "糖星背包"
+          }
+        },
+        {
+          "id": "p1-callout",
+          "type": "text",
+          "x": 62,
+          "y": 542,
+          "width": 252,
+          "height": 80,
+          "style": {
+            "color": "#5a3999",
+            "fontSize": "28px",
+            "fontWeight": "700",
+            "background": "rgba(255,255,255,0.8)",
+            "borderRadius": "40px",
+            "display": "flex",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "animation": "pulsePop 2s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "点我，糖星会发光"
+          }
+        }
+      ],
+      "hotspots": [
+        {
+          "id": "p1-jump",
+          "x": 62,
+          "y": 542,
+          "width": 252,
+          "height": 80,
+          "trigger": "tap",
+          "actionType": "jump_page",
+          "actionPayload": {
+            "targetPageNo": 2
+          }
+        },
+        {
+          "id": "p1-bag-audio",
+          "x": 240,
+          "y": 324,
+          "width": 108,
+          "height": 108,
+          "trigger": "tap",
+          "actionType": "play_audio",
+          "actionPayload": {
+            "audioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "pageNo": 2,
+      "backgroundUrl": "/storybook/bg2.svg",
+      "narrationAudioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+      "elements": [
+        {
+          "id": "p2-title",
+          "type": "text",
+          "x": 34,
+          "y": 52,
+          "width": 320,
+          "height": 70,
+          "style": {
+            "color": "#ffffff",
+            "fontSize": "30px",
+            "fontWeight": "800",
+            "textShadow": "0 3px 8px #2c5ca580",
+            "animation": "floatY 2.6s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "云朵车站开始检票啦"
+          }
+        },
+        {
+          "id": "p2-clouds",
+          "type": "text",
+          "x": 74,
+          "y": 162,
+          "width": 240,
+          "height": 70,
+          "style": {
+            "fontSize": "45px",
+            "animation": "driftCloud 6.5s linear infinite"
+          },
+          "payload": {
+            "text": "☁️ ☁️ ☁️"
+          }
+        },
+        {
+          "id": "p2-rabbit",
+          "type": "image",
+          "x": 255,
+          "y": 214,
+          "width": 102,
+          "height": 110,
+          "style": {
+            "animation": "bounceSoft 2s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/rabbit.svg",
+            "alt": "团团挥手"
+          }
+        },
+        {
+          "id": "p2-train",
+          "type": "image",
+          "x": 30,
+          "y": 318,
+          "width": 316,
+          "height": 178,
+          "style": {
+            "animation": "driftTrain 4.5s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/train.svg",
+            "alt": "星星糖列车"
+          }
+        },
+        {
+          "id": "p2-hint",
+          "type": "text",
+          "x": 38,
+          "y": 548,
+          "width": 298,
+          "height": 78,
+          "style": {
+            "color": "#325ca6",
+            "fontSize": "26px",
+            "fontWeight": "700",
+            "background": "rgba(255,255,255,0.82)",
+            "borderRadius": "36px",
+            "display": "flex",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "animation": "pulsePop 2.2s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "上车咯，去萤光森林！"
+          }
+        }
+      ],
+      "hotspots": [
+        {
+          "id": "p2-jump",
+          "x": 34,
+          "y": 544,
+          "width": 308,
+          "height": 84,
+          "trigger": "tap",
+          "actionType": "jump_page",
+          "actionPayload": {
+            "targetPageNo": 3
+          }
+        },
+        {
+          "id": "p2-cloud-audio",
+          "x": 68,
+          "y": 154,
+          "width": 250,
+          "height": 78,
+          "trigger": "tap",
+          "actionType": "play_audio",
+          "actionPayload": {
+            "audioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "pageNo": 3,
+      "backgroundUrl": "/storybook/bg3.svg",
+      "narrationAudioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+      "elements": [
+        {
+          "id": "p3-title",
+          "type": "text",
+          "x": 28,
+          "y": 54,
+          "width": 322,
+          "height": 72,
+          "style": {
+            "color": "#ecffe9",
+            "fontSize": "30px",
+            "fontWeight": "800",
+            "textShadow": "0 4px 10px #0e522880",
+            "animation": "twinkle 2s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "萤光森林里，星星会眨眼"
+          }
+        },
+        {
+          "id": "p3-fireflies",
+          "type": "text",
+          "x": 66,
+          "y": 164,
+          "width": 252,
+          "height": 90,
+          "style": {
+            "color": "#fff9c4",
+            "fontSize": "40px",
+            "letterSpacing": "6px",
+            "animation": "twinkle 1.4s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "✨ ✨ ✨ ✨"
+          }
+        },
+        {
+          "id": "p3-rabbit",
+          "type": "image",
+          "x": 36,
+          "y": 292,
+          "width": 160,
+          "height": 174,
+          "style": {
+            "animation": "floatY 2.5s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/rabbit.svg",
+            "alt": "团团收集萤光"
+          }
+        },
+        {
+          "id": "p3-bag",
+          "type": "image",
+          "x": 214,
+          "y": 336,
+          "width": 122,
+          "height": 122,
+          "style": {
+            "animation": "spinCandy 3.5s linear infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/starbag.svg",
+            "alt": "背包闪光"
+          }
+        },
+        {
+          "id": "p3-hint",
+          "type": "text",
+          "x": 38,
+          "y": 548,
+          "width": 300,
+          "height": 78,
+          "style": {
+            "color": "#1f6d37",
+            "fontSize": "26px",
+            "fontWeight": "700",
+            "background": "rgba(235,255,235,0.82)",
+            "borderRadius": "36px",
+            "display": "flex",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "animation": "pulsePop 2s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "糖星装满啦，去月亮湖！"
+          }
+        }
+      ],
+      "hotspots": [
+        {
+          "id": "p3-jump",
+          "x": 36,
+          "y": 544,
+          "width": 308,
+          "height": 84,
+          "trigger": "tap",
+          "actionType": "jump_page",
+          "actionPayload": {
+            "targetPageNo": 4
+          }
+        },
+        {
+          "id": "p3-firefly-audio",
+          "x": 62,
+          "y": 158,
+          "width": 258,
+          "height": 94,
+          "trigger": "tap",
+          "actionType": "play_audio",
+          "actionPayload": {
+            "audioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p4",
+      "pageNo": 4,
+      "backgroundUrl": "/storybook/bg4.svg",
+      "narrationAudioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3",
+      "elements": [
+        {
+          "id": "p4-title",
+          "type": "text",
+          "x": 24,
+          "y": 52,
+          "width": 330,
+          "height": 72,
+          "style": {
+            "color": "#fff4c8",
+            "fontSize": "30px",
+            "fontWeight": "800",
+            "textShadow": "0 3px 8px #2d246e",
+            "animation": "floatY 2.8s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "月亮湖面像一块会唱歌的镜子"
+          }
+        },
+        {
+          "id": "p4-moon",
+          "type": "text",
+          "x": 250,
+          "y": 136,
+          "width": 100,
+          "height": 100,
+          "style": {
+            "fontSize": "74px",
+            "animation": "moonPulse 2.4s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "🌙"
+          }
+        },
+        {
+          "id": "p4-rabbit",
+          "type": "image",
+          "x": 72,
+          "y": 292,
+          "width": 146,
+          "height": 162,
+          "style": {
+            "animation": "floatY 2.6s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/rabbit.svg",
+            "alt": "团团看月亮"
+          }
+        },
+        {
+          "id": "p4-train",
+          "type": "image",
+          "x": 172,
+          "y": 334,
+          "width": 174,
+          "height": 104,
+          "style": {
+            "animation": "driftTrain 4.2s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/train.svg",
+            "alt": "列车倒影"
+          }
+        },
+        {
+          "id": "p4-hint",
+          "type": "text",
+          "x": 42,
+          "y": 548,
+          "width": 292,
+          "height": 78,
+          "style": {
+            "color": "#433a94",
+            "fontSize": "25px",
+            "fontWeight": "700",
+            "background": "rgba(255,245,211,0.84)",
+            "borderRadius": "36px",
+            "display": "flex",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "animation": "pulsePop 2s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "月亮给了我们彩虹车票"
+          }
+        }
+      ],
+      "hotspots": [
+        {
+          "id": "p4-jump",
+          "x": 40,
+          "y": 544,
+          "width": 298,
+          "height": 84,
+          "trigger": "tap",
+          "actionType": "jump_page",
+          "actionPayload": {
+            "targetPageNo": 5
+          }
+        },
+        {
+          "id": "p4-moon-audio",
+          "x": 244,
+          "y": 130,
+          "width": 108,
+          "height": 108,
+          "trigger": "tap",
+          "actionType": "play_audio",
+          "actionPayload": {
+            "audioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p5",
+      "pageNo": 5,
+      "backgroundUrl": "/storybook/bg5.svg",
+      "narrationAudioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3",
+      "elements": [
+        {
+          "id": "p5-title",
+          "type": "text",
+          "x": 30,
+          "y": 52,
+          "width": 320,
+          "height": 74,
+          "style": {
+            "color": "#fffaf2",
+            "fontSize": "30px",
+            "fontWeight": "800",
+            "textShadow": "0 3px 8px #9f3f77",
+            "animation": "rainbowGlow 2.2s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "彩虹门打开啦，列车加速冲刺"
+          }
+        },
+        {
+          "id": "p5-rainbow",
+          "type": "text",
+          "x": 116,
+          "y": 180,
+          "width": 160,
+          "height": 90,
+          "style": {
+            "fontSize": "78px",
+            "animation": "swingRainbow 2.8s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "🌈"
+          }
+        },
+        {
+          "id": "p5-train",
+          "type": "image",
+          "x": 36,
+          "y": 322,
+          "width": 304,
+          "height": 170,
+          "style": {
+            "animation": "dashForward 2.4s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/train.svg",
+            "alt": "列车冲刺"
+          }
+        },
+        {
+          "id": "p5-rabbit",
+          "type": "image",
+          "x": 262,
+          "y": 254,
+          "width": 96,
+          "height": 106,
+          "style": {
+            "animation": "bounceSoft 1.8s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/rabbit.svg",
+            "alt": "团团欢呼"
+          }
+        },
+        {
+          "id": "p5-hint",
+          "type": "text",
+          "x": 42,
+          "y": 548,
+          "width": 292,
+          "height": 78,
+          "style": {
+            "color": "#8a2f66",
+            "fontSize": "25px",
+            "fontWeight": "700",
+            "background": "rgba(255,243,222,0.86)",
+            "borderRadius": "36px",
+            "display": "flex",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "animation": "pulsePop 2.1s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "最后一站，糖星庆典广场！"
+          }
+        }
+      ],
+      "hotspots": [
+        {
+          "id": "p5-jump",
+          "x": 38,
+          "y": 544,
+          "width": 300,
+          "height": 84,
+          "trigger": "tap",
+          "actionType": "jump_page",
+          "actionPayload": {
+            "targetPageNo": 6
+          }
+        },
+        {
+          "id": "p5-rainbow-audio",
+          "x": 108,
+          "y": 174,
+          "width": 170,
+          "height": 100,
+          "trigger": "tap",
+          "actionType": "play_audio",
+          "actionPayload": {
+            "audioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p6",
+      "pageNo": 6,
+      "backgroundUrl": "/storybook/bg6.svg",
+      "narrationAudioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-11.mp3",
+      "elements": [
+        {
+          "id": "p6-title",
+          "type": "text",
+          "x": 40,
+          "y": 54,
+          "width": 300,
+          "height": 74,
+          "style": {
+            "color": "#ffffff",
+            "fontSize": "32px",
+            "fontWeight": "800",
+            "textShadow": "0 3px 9px #b35646",
+            "animation": "rainbowGlow 2.2s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "糖星庆典开始咯！"
+          }
+        },
+        {
+          "id": "p6-confetti",
+          "type": "text",
+          "x": 52,
+          "y": 158,
+          "width": 286,
+          "height": 86,
+          "style": {
+            "fontSize": "50px",
+            "letterSpacing": "4px",
+            "animation": "twinkle 1.2s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "🎉 ✨ 🍭 ✨ 🎉"
+          }
+        },
+        {
+          "id": "p6-rabbit",
+          "type": "image",
+          "x": 74,
+          "y": 296,
+          "width": 148,
+          "height": 164,
+          "style": {
+            "animation": "bounceSoft 1.7s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/rabbit.svg",
+            "alt": "团团跳舞"
+          }
+        },
+        {
+          "id": "p6-train",
+          "type": "image",
+          "x": 170,
+          "y": 330,
+          "width": 182,
+          "height": 102,
+          "style": {
+            "animation": "driftTrain 3.8s ease-in-out infinite"
+          },
+          "payload": {
+            "imageUrl": "/storybook/train.svg",
+            "alt": "列车鼓掌"
+          }
+        },
+        {
+          "id": "p6-replay",
+          "type": "text",
+          "x": 48,
+          "y": 544,
+          "width": 280,
+          "height": 82,
+          "style": {
+            "color": "#8c3158",
+            "fontSize": "29px",
+            "fontWeight": "800",
+            "background": "rgba(255,255,255,0.85)",
+            "borderRadius": "40px",
+            "display": "flex",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "animation": "pulsePop 1.9s ease-in-out infinite"
+          },
+          "payload": {
+            "text": "再看一遍，出发！"
+          }
+        }
+      ],
+      "hotspots": [
+        {
+          "id": "p6-replay-jump",
+          "x": 44,
+          "y": 540,
+          "width": 288,
+          "height": 88,
+          "trigger": "tap",
+          "actionType": "jump_page",
+          "actionPayload": {
+            "targetPageNo": 1
+          }
+        },
+        {
+          "id": "p6-party-audio",
+          "x": 46,
+          "y": 150,
+          "width": 294,
+          "height": 96,
+          "trigger": "tap",
+          "actionType": "play_audio",
+          "actionPayload": {
+            "audioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-12.mp3"
+          }
+        }
+      ]
+    }
+  ]
+}

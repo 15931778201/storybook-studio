@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>时光小铺 · 怀旧互动绘本（修复版）</title>
+  <script src="https://unpkg.com/konva@9.3.10/konva.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
+    body {
+      background: #f9f6f0;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      color: #333;
+    }
+    .sidebar {
+      width: 220px;
+      background: white;
+      border-right: 1px solid #ddd;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      overflow-y: auto;
+    }
+    .book-title {
+      width: 100%;
+      padding: 6px 10px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    h3 {
+      font-size: 14px;
+      color: #555;
+      margin: 8px 0 6px;
+    }
+    .page-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .page-item {
+      padding: 6px 10px;
+      background: #f0f7ff;
+      border-radius: 4px;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+    }
+    .page-item.active { background: #d0e7ff; }
+    .btn {
+      padding: 6px 12px;
+      background: #4a90e2;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      width: 100%;
+    }
+    .btn-sm {
+      padding: 4px 8px;
+      font-size: 12px;
+      width: auto;
+    }
+    .canvas-container {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #eee;
+      position: relative;
+    }
+    #konva-container {
+      border: 1px solid #ccc;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .crop-modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .crop-content {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 800px;
+      width: 90%;
+    }
+    .crop-preview {
+      width: 100%;
+      height: 400px;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .crop-actions {
+      margin-top: 16px;
+      text-align: right;
+    }
+    .hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <!-- 左侧边栏 -->
+  <div class="sidebar">
+    <input type="text" class="book-title" value="时光小铺" id="bookTitle" />
+
+    <div>
+      <h3>📖 页面管理</h3>
+      <div class="page-list" id="pageList"></div>
+      <button class="btn" id="addPageBtn">+ 添加新页</button>
+    </div>
+
+    <div>
+      <h3>🖼️ 背景</h3>
+      <button class="btn" id="uploadBgBtn">上传背景图</button>
+      <div class="hint">或使用怀旧模板 ↓</div>
+      <button class="btn" id="useClassroomBg">使用「老教室」背景</button>
+    </div>
+
+    <div>
+      <h3>🧸 互动贴纸</h3>
+      <button class="btn" id="addPandaBtn">添加「熊猫饼干」</button>
+      <div class="hint">点击它会眨眼+说话！</div>
+    </div>
+  </div>
+
+  <!-- 画布区域 -->
+  <div class="canvas-container">
+    <div id="konva-container"></div>
+  </div>
+
+  <!-- 裁剪模态框 -->
+  <div class="crop-modal" id="cropModal">
+    <div class="crop-content">
+      <h3>裁剪为 16:9 背景</h3>
+      <p>系统已自动选中最佳区域（16:9）</p>
+      <div class="crop-preview" id="cropPreview"></div>
+      <div class="crop-actions">
+        <button class="btn" id="cancelCrop">取消</button>
+        <button class="btn" id="confirmCrop">确认裁剪</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== 数据模型 =====
+    const book = {
+      title: '时光小铺',
+      pages: []
+    };
+    let currentPageIndex = -1;
+
+    // ===== Konva 初始化 =====
+    const container = document.getElementById('konva-container');
+    const stageWidth = 1280;
+    const stageHeight = 720;
+    const scale = Math.min(container.clientWidth / stageWidth, container.clientHeight / stageHeight, 0.8);
+    const displayWidth = stageWidth * scale;
+    const displayHeight = stageHeight * scale;
+
+    const stage = new Konva.Stage({
+      container: 'konva-container',
+      width: displayWidth,
+      height: displayHeight,
+      scaleX: scale,
+      scaleY: scale
+    });
+    const layer = new Konva.Layer();
+    stage.add(layer);
+
+    // ===== 老教室背景（Base64 PNG，极简示意）=====
+    // 实际项目中替换为高质量手绘图
+    const classroomBgBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAoAAAAHgCAIAAAC6s0uzAAAD2klEQVR4nO3BAQEAAACAkP6v7ggKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA......"; // 此处省略，实际使用完整 Base64
+
+    // 为演示，我们用一个纯色背景代替（避免 Base64 过长）
+    function getPlaceholderBg() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#f0e6d2';
+      ctx.fillRect(0, 0, 1280, 720);
+      // 黑板
+      ctx.fillStyle = '#2c3e50';
+      ctx.fillRect(400, 100, 480, 300);
+      // 奖状
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(900, 150, 120, 80);
+      ctx.font = '20px serif';
+      ctx.fillStyle = '#d35400';
+      ctx.textAlign = 'center';
+      ctx.fillText('三好学生', 960, 190);
+      return canvas.toDataURL();
+    }
+
+    // ===== 熊猫饼干（Base64 PNG）=====
+    function getPandaCookieImage() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 120;
+      canvas.height = 120;
+      const ctx = canvas.getContext('2d');
+      // 饼干底
+      ctx.beginPath();
+      ctx.arc(60, 60, 50, 0, Math.PI * 2);
+      ctx.fillStyle = '#e6c28c';
+      ctx.fill();
+      ctx.strokeStyle = '#d4a56a';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // 芝麻
+      const sesame = [[45,50],[60,40],[75,50],[50,70],[70,70]];
+      ctx.fillStyle = '#5d4037';
+      sesame.forEach(([x,y]) => {
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI*2);
+        ctx.fill();
+      });
+      // 熊猫眼
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.arc(45,50,12,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(75,50,12,0,Math.PI*2); ctx.fill();
+      // 眼白
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.ellipse(45,50,10,4,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(75,50,10,4,0,0,Math.PI*2); ctx.fill();
+      // 瞳孔
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.arc(45,48,2,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(75,48,2,0,Math.PI*2); ctx.fill();
+      // 鼻子
+      ctx.beginPath(); ctx.arc(60,65,6,0,Math.PI*2); ctx.fill();
+      // 嘴巴
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(50,80);
+      ctx.quadraticCurveTo(60,90,70,80);
+      ctx.stroke();
+      return canvas.toDataURL();
+    }
+    const pandaCookieBase64 = getPandaCookieImage();
+
+    // ===== 页面管理 =====
+    const pageListEl = document.getElementById('pageList');
+    function addPage() {
+      if (book.pages.length >= 30) return alert('最多30页');
+      book.pages.push({
+        id: 'page_' + Date.now(),
+        background: null,
+        elements: []
+      });
+      renderPageList();
+      switchPage(book.pages.length - 1);
+    }
+
+    function deletePage(index) {
+      if (book.pages.length <= 1) return alert('至少保留一页');
+      book.pages.splice(index, 1);
+      renderPageList();
+      if (currentPageIndex >= book.pages.length) currentPageIndex = book.pages.length - 1;
+      if (book.pages.length > 0) switchPage(currentPageIndex);
+      else clearCanvas();
+    }
+
+    function switchPage(index) {
+      currentPageIndex = index;
+      renderPageList();
+      renderCanvas();
+    }
+
+    function renderPageList() {
+      pageListEl.innerHTML = '';
+      book.pages.forEach((_, i) => {
+        const el = document.createElement('div');
+        el.className = `page-item ${i === currentPageIndex ? 'active' : ''}`;
+        el.textContent = `第 ${i + 1} 页`;
+        const delBtn = document.createElement('span');
+        delBtn.textContent = '×';
+        delBtn.style.cursor = 'pointer';
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          deletePage(i);
+        };
+        el.appendChild(delBtn);
+        el.addEventListener('click', () => switchPage(i));
+        pageListEl.appendChild(el);
+      });
+    }
+
+    // ===== 画布操作 =====
+    function clearCanvas() {
+      layer.destroyChildren();
+      layer.draw();
+    }
+
+    function renderCanvas() {
+      if (currentPageIndex === -1 || !book.pages[currentPageIndex]) return clearCanvas();
+      const page = book.pages[currentPageIndex];
+      clearCanvas();
+
+      if (page.background) {
+        const img = new Image();
+        img.onload = () => {
+          const konvaImg = new Konva.Image({
+            image: img,
+            width: stageWidth,
+            height: stageHeight
+          });
+          layer.add(konvaImg);
+          layer.draw();
+        };
+        img.src = page.background;
+      }
+
+      page.elements.forEach(el => {
+        const img = new Image();
+        img.onload = () => {
+          const konvaImg = new Konva.Image({
+            image: img,
+            x: el.x,
+            y: el.y,
+            width: el.width,
+            height: el.height,
+            draggable: true
+          });
+          konvaImg.on('click', () => {
+            // 简单缩放动画
+            konvaImg.to({
+              scaleX: 1.2,
+              scaleY: 1.2,
+              duration: 0.1,
+              onFinish: () => {
+                konvaImg.to({ scaleX: 1, scaleY: 1, duration: 0.1 });
+              }
+            });
+            alert('🍪 咯咯！你找到我啦～\n这是1985年的魔法熊猫饼干！');
+          });
+          layer.add(konvaImg);
+        };
+        img.src = el.imageBase64;
+      });
+
+      layer.draw();
+    }
+
+    // ===== 背景上传 & 裁剪 =====
+    const cropModal = document.getElementById('cropModal');
+    const cropPreview = document.getElementById('cropPreview');
+    let originalImage = null;
+
+    document.getElementById('uploadBgBtn').addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          originalImage = new Image();
+          originalImage.onload = () => showCropModal(originalImage);
+          originalImage.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+    });
+
+    function showCropModal(img) {
+      cropPreview.innerHTML = '';
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      const aspect = 16 / 9;
+      let w = img.width, h = img.height, x = 0, y = 0;
+      if (w / h > aspect) {
+        w = h * aspect;
+        x = (img.width - w) / 2;
+      } else {
+        h = w / aspect;
+        y = (img.height - h) / 2;
+      }
+
+      ctx.strokeStyle = '#0f0';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(x, y, w, h);
+      cropPreview.appendChild(canvas);
+      cropModal.style.display = 'flex';
+    }
+
+    document.getElementById('confirmCrop').addEventListener('click', () => {
+      if (!originalImage || currentPageIndex === -1) return;
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = 1280;
+      tempCanvas.height = 720;
+      const ctx = tempCanvas.getContext('2d');
+      
+      const aspect = 16 / 9;
+      let w = originalImage.width, h = originalImage.height, x = 0, y = 0;
+      if (w / h > aspect) {
+        w = h * aspect;
+        x = (originalImage.width - w) / 2;
+      } else {
+        h = w / aspect;
+        y = (originalImage.height - h) / 2;
+      }
+      ctx.drawImage(originalImage, x, y, w, h, 0, 0, 1280, 720);
+      
+      book.pages[currentPageIndex].background = tempCanvas.toDataURL('image/jpeg', 0.85);
+      renderCanvas();
+      cropModal.style.display = 'none';
+    });
+
+    document.getElementById('cancelCrop').addEventListener('click', () => {
+      cropModal.style.display = 'none';
+    });
+
+    // ===== 使用模板背景 =====
+    document.getElementById('useClassroomBg').addEventListener('click', () => {
+      if (currentPageIndex === -1) return;
+      book.pages[currentPageIndex].background = getPlaceholderBg(); // 动态生成
+      renderCanvas();
+    });
+
+    // ===== 添加熊猫饼干 =====
+    document.getElementById('addPandaBtn').addEventListener('click', () => {
+      if (currentPageIndex === -1) return;
+      const page = book.pages[currentPageIndex];
+      page.elements.push({
+        imageBase64: pandaCookieBase64,
+        x: 500,
+        y: 300,
+        width: 120,
+        height: 120
+      });
+      renderCanvas();
+    });
+
+    // ===== 初始化 =====
+    document.getElementById('addPageBtn').addEventListener('click', addPage);
+    addPage(); // 创建第一页
+
+    window.addEventListener('resize', () => {
+      const newScale = Math.min(container.clientWidth / stageWidth, container.clientHeight / stageHeight, 0.8);
+      stage.scale({ x: newScale, y: newScale });
+      stage.width(stageWidth * newScale);
+      stage.height(stageHeight * newScale);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<svg width="800" height="1200" viewBox="0 0 800 1200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7fd0ff"/>
+      <stop offset="52%" stop-color="#b9a4ff"/>
+      <stop offset="100%" stop-color="#ffd6f2"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="1200" fill="url(#g)"/>
+  <circle cx="130" cy="190" r="72" fill="#ffffff88"/>
+  <circle cx="690" cy="300" r="56" fill="#fff8"/>
+  <circle cx="640" cy="190" r="16" fill="#fff"/>
+  <circle cx="300" cy="150" r="10" fill="#fff"/>
+  <circle cx="420" cy="220" r="8" fill="#fff"/>
+  <rect x="70" y="860" width="660" height="210" rx="50" fill="#fff6"/>
+  <text x="400" y="530" text-anchor="middle" font-size="86" font-weight="700" fill="#ffffff" font-family="'Baloo 2', 'PingFang SC', sans-serif">星星糖列车</text>
+  <text x="400" y="620" text-anchor="middle" font-size="58" font-weight="700" fill="#fffdfb" font-family="'Baloo 2', 'PingFang SC', sans-serif">兔兔团团出发啦</text>
+  <g transform="translate(120,670)">
+    <ellipse cx="260" cy="340" rx="240" ry="70" fill="#6f67cf55"/>
+    <rect x="120" y="120" width="280" height="220" rx="120" fill="#fff4f2"/>
+    <ellipse cx="170" cy="70" rx="42" ry="100" transform="rotate(-18 170 70)" fill="#fff4f2"/>
+    <ellipse cx="350" cy="70" rx="42" ry="100" transform="rotate(18 350 70)" fill="#fff4f2"/>
+    <ellipse cx="170" cy="74" rx="20" ry="54" transform="rotate(-18 170 74)" fill="#ffc4db"/>
+    <ellipse cx="350" cy="74" rx="20" ry="54" transform="rotate(18 350 74)" fill="#ffc4db"/>
+    <circle cx="210" cy="220" r="14" fill="#4e4d6a"/>
+    <circle cx="310" cy="220" r="14" fill="#4e4d6a"/>
+    <ellipse cx="260" cy="268" rx="20" ry="14" fill="#ff9eb8"/>
+    <path d="M220 292 Q260 326 300 292" fill="none" stroke="#ff8aaf" stroke-width="10" stroke-linecap="round"/>
+    <rect x="390" y="180" width="140" height="130" rx="24" fill="#ffd465"/>
+    <path d="M460 180 L460 130" stroke="#ffd465" stroke-width="20" stroke-linecap="round"/>
+    <circle cx="460" cy="112" r="24" fill="#fff48f"/>
+    <polygon points="460,94 468,108 484,110 473,122 476,138 460,130 444,138 447,122 436,110 452,108" fill="#fff"/>
+  </g>
+  <text x="400" y="975" text-anchor="middle" font-size="42" fill="#5a4ca7" font-family="'PingFang SC', sans-serif">轻触星星，跟着团团一起旅行</text>
+</svg>

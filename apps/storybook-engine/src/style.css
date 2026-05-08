@@ -1,0 +1,35 @@
+body {
+  margin: 0;
+  padding: 0;
+  background: #f0ead6;
+  font-family: 'KaiTi', serif;
+  overflow: hidden;
+}
+.app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  height: 100dvh;
+}
+.controls {
+  margin-top: 8px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.controls button {
+  background: #ff9f1c;
+  border: none;
+  color: white;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

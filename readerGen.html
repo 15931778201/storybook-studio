@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>互动绘本分镜编辑器 · 自适应画布</title>
+  <script src="https://unpkg.com/konva@9/konva.min.js"></script>
+  <style>
+    :root {
+      --bg: #1a1d23;
+      --panel: #21252b;
+      --border: #333842;
+      --text: #e0e0e0;
+      --text2: #9ca3af;
+      --accent: #6c8cff;
+      --danger: #e0556a;
+      --input: #2a2d35;
+      --card: #282c34;
+      --radius: 8px;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Segoe UI','PingFang SC',sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+    .toolbar { display:flex; align-items:center; gap:10px; padding:8px 16px; background:var(--panel); border-bottom:1px solid var(--border); min-height:48px; z-index:10; }
+    .logo { font-weight:700; font-size:16px; color:var(--accent); }
+    .btn {
+      padding:4px 12px; border-radius:4px; border:1px solid transparent; cursor:pointer;
+      font-size:12px; font-weight:500; transition:0.2s; background:transparent; color:var(--text);
+      border-color:var(--border); display:flex; align-items:center; gap:4px;
+    }
+    .btn:hover { background:var(--input); }
+    .btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .btn-primary:hover { background:#5a7aef; }
+    .btn-danger { color:var(--danger); border-color:var(--danger); }
+    .btn-danger:hover { background:var(--danger); color:#fff; }
+    .spacer { flex:1; }
+    .main { display:flex; flex:1; overflow:hidden; height:calc(100vh - 48px); }
+    .left { width:240px; min-width:240px; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; }
+    .section { padding:8px 12px; border-bottom:1px solid var(--border); }
+    .section h3 { font-size:11px; color:var(--text2); margin-bottom:6px; }
+    .page-list { display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto; padding:8px; }
+    .page-item { display:flex; align-items:center; gap:6px; padding:6px; border-radius:4px; cursor:pointer; border:2px solid transparent; background:var(--card); font-size:12px; }
+    .page-item.active { border-color:var(--accent); }
+    .element-palette { display:flex; flex-direction:column; gap:6px; }
+    .element-palette .el-item {
+      padding:8px; background:var(--card); border-radius:6px; cursor:grab; color:var(--text);
+      display:flex; align-items:center; gap:6px; font-size:13px; border:1px solid var(--border);
+    }
+    .el-item:hover { border-color:var(--accent); }
+    .upload-btn { display:block; margin-top:6px; padding:6px; border:1px dashed var(--border); border-radius:4px; text-align:center; font-size:11px; color:var(--text2); cursor:pointer; }
+    .upload-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .canvas-area { flex:1; display:flex; align-items:center; justify-content:center; background:#16181d; padding:20px; overflow:hidden; }
+    /* 画布容器不再固定尺寸，自适应保持16:9 */
+    .canvas-wrap {
+      position:relative;
+      border-radius:6px; overflow:hidden;
+      box-shadow:0 0 24px rgba(0,0,0,0.6); border:2px solid var(--border); background:#fff;
+      width:100%; max-width:100%; max-height:100%;
+      aspect-ratio:16/9;
+    }
+    #konvaRoot { width:100%; height:100%; }
+    .right { width:280px; min-width:280px; background:var(--panel); border-left:1px solid var(--border); padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+    .prop-card { background:var(--card); border-radius:var(--radius); padding:10px; border:1px solid var(--border); }
+    .prop-card h3 { font-size:11px; color:var(--text2); margin-bottom:8px; }
+    .prop-row { display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:12px; }
+    .prop-row label { width:26px; color:var(--text2); }
+    .prop-row input, .prop-row select, .prop-row textarea { flex:1; background:var(--input); border:1px solid var(--border); color:var(--text); padding:3px 5px; border-radius:4px; font-size:12px; }
+    .prop-row textarea { height:60px; font-family:monospace; resize:vertical; }
+    .no-select { color:var(--text2); text-align:center; font-size:13px; padding:20px 0; }
+    .prop-group-title { font-size:11px; font-weight:600; color:var(--text2); margin-bottom:4px; }
+    .toast {
+      position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+      background:#333; color:#fff; padding:8px 20px; border-radius:20px; font-size:13px;
+      z-index:300; opacity:0; transition:0.3s; pointer-events:none;
+    }
+    .toast.show { opacity:1; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span class="logo">📖 互动绘本编辑器</span>
+    <input type="text" id="bookTitle" value="没有牙齿的大老虎" style="background:var(--input);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:13px;width:180px;">
+    <button class="btn" id="addPageBtn">＋ 页面</button>
+    <button class="btn" id="dupPageBtn">⧉ 复制页</button>
+    <span class="spacer"></span>
+    <span id="pageIndicator" style="font-size:11px;color:var(--text2);">第1/1页</span>
+    <button class="btn" id="previewBtn">▶️ 预览</button>
+    <button class="btn btn-primary" id="exportBtn">📥 导出引擎JSON</button>
+    <button class="btn" id="importBtn">📤 导入JSON</button>
+    <input type="file" id="importFile" accept=".json" style="display:none;">
+  </div>
+  <div class="main">
+    <div class="left">
+      <div class="section"><h3>📄 页面列表</h3></div>
+      <div class="page-list" id="pageList"></div>
+      <div class="section">
+        <h3>🎨 元素库（拖入画布）</h3>
+        <div class="element-palette">
+          <div class="el-item" draggable="true" data-type="character">🐻 角色</div>
+          <div class="el-item" draggable="true" data-type="bubble">💬 气泡</div>
+          <div class="el-item" draggable="true" data-type="clickable">🔘 点击区</div>
+          <div class="el-item" draggable="true" data-type="draggable">🧩 拖拽物</div>
+        </div>
+        <div class="upload-btn" id="uploadBgBtn">🖼️ 上传背景图片</div>
+        <div class="upload-btn" id="uploadElementBtn" style="border-color:var(--accent);color:var(--accent);">📁 上传元素图片</div>
+        <input type="file" id="bgInput" accept="image/*" style="display:none;">
+        <input type="file" id="elementImageInput" accept="image/*" style="display:none;">
+      </div>
+    </div>
+    <div class="canvas-area" id="canvasArea">
+      <div class="canvas-wrap" id="canvasContainer">
+        <div id="konvaRoot"></div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="prop-card">
+        <h3>📋 页面旁白</h3>
+        <textarea id="narrationInput" placeholder="输入旁白文本" style="width:100%;background:var(--input);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:5px;font-size:12px;resize:vertical;height:60px;"></textarea>
+      </div>
+      <div class="prop-card" id="propsCard">
+        <h3>🎯 元素属性</h3>
+        <div class="no-select" id="noSelect">👆 点击画布元素</div>
+        <div id="propsForm" style="display:none;">
+          <div class="prop-row"><label>X</label><input type="number" id="propX" step="0.01" min="0" max="1"><label>Y</label><input type="number" id="propY" step="0.01" min="0" max="1"></div>
+          <div class="prop-row"><label>宽</label><input type="number" id="propW" step="0.01" min="0.01"><label>高</label><input type="number" id="propH" step="0.01" min="0.01"></div>
+          <div class="prop-row"><label>旋转</label><input type="number" id="propR" step="1" value="0"></div>
+          <div id="imageProp" style="display:none;">
+            <div class="prop-row"><label>图片</label><input type="text" id="propImage" placeholder="图片文件名或URL"></div>
+            <div style="margin-top:6px;">
+              <div class="prop-group-title">✂️ 裁剪 (原始像素)</div>
+              <div class="prop-row"><label>X</label><input type="number" id="cropX" step="1" min="0"><label>Y</label><input type="number" id="cropY" step="1" min="0"></div>
+              <div class="prop-row"><label>宽</label><input type="number" id="cropW" step="1" min="1"><label>高</label><input type="number" id="cropH" step="1" min="1"></div>
+              <button class="btn" id="resetCropBtn" style="width:100%; margin-top:4px;">重置裁剪</button>
+            </div>
+          </div>
+          <div id="bubbleProps" style="display:none;">
+            <div class="prop-row"><label>文字</label><input type="text" id="bubbleText"></div>
+            <div class="prop-row"><label>颜色</label><input type="color" id="bubbleColor" value="#ffffff"></div>
+            <div class="prop-row"><label>字号</label><input type="number" id="bubbleSize" value="16" min="8"></div>
+          </div>
+          <div id="actionProps" style="display:none; border-top:1px solid var(--border); margin-top:6px; padding-top:6px;">
+            <h3 style="font-size:11px;color:var(--text2);">动作配置 (JSON)</h3>
+            <textarea id="actionTextarea" placeholder='[{ "type": "showBubble", "target": "...", "text": "..." }]'></textarea>
+            <div id="dropZoneProps" style="display:none; margin-top:6px;">
+              <h3 style="font-size:11px;color:var(--text2);">拖拽目标IDs (逗号分隔)</h3>
+              <input type="text" id="dropZonesInput" placeholder="例如：tiger-mouth">
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:8px;">
+            <button class="btn btn-danger" id="deleteElementBtn">🗑️ 删除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    (function() {
+      // ---------- 动态舞台尺寸 ----------
+      const canvasContainer = document.getElementById('canvasContainer');
+      let STAGE_W = 0, STAGE_H = 0;
+
+      function updateStageSize() {
+        const rect = canvasContainer.getBoundingClientRect();
+        STAGE_W = rect.width;
+        STAGE_H = rect.height;
+        if (stage) {
+          stage.width(STAGE_W);
+          stage.height(STAGE_H);
+          renderPage(); // 重新渲染所有元素以适配新尺寸
+        }
+      }
+
+      // ---------- 元素类型定义 ----------
+      const ELEMENT_TYPES = {
+        character: { label: '角色', defaultProps: { image: '', x: 0.5, y: 0.5, width: 0.15, height: 0.2, rotation:0, onClick: [], crop: null } },
+        bubble: { label: '气泡', defaultProps: { target: '', text: '', position: 'top', duration: 3000, x:0.5, y:0.3, width:0.2, height:0.12, rotation:0, fill:'#7ec8a0', fontColor:'#ffffff', fontSize:16 } },
+        clickable: { label: '点击区', defaultProps: { hitArea: { x:0.4, y:0.5, width:0.12, height:0.12 }, visual: { color:'#6c8cff', opacity:0.3 }, onClick: [], x:0.4, y:0.5, width:0.12, height:0.12, rotation:0 } },
+        draggable: { label: '拖拽物', defaultProps: { image: '', dropZones: [], x:0.5, y:0.65, width:0.1, height:0.1, rotation:0, crop: null } }
+      };
+
+      // ---------- 全局数据 ----------
+      let bookData = {
+        title: '没有牙齿的大老虎',
+        pages: [{ id: genId(), backgroundImage: '', elements: [], narrationText: '' }],
+        currentPage: 0
+      };
+
+      let stage, bgLayer, elLayer, transformer, selectedNode = null;
+      const elementNodes = new Map();
+
+      function genId() { return 'el_' + Date.now() + '_' + Math.random().toString(36).substr(2,6); }
+      function currentPage() { return bookData.pages[bookData.currentPage]; }
+      function toast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg; t.classList.add('show');
+        clearTimeout(t._timeout); t._timeout = setTimeout(() => t.classList.remove('show'), 2000);
+      }
+      function save() { try { localStorage.setItem('storybook_editor', JSON.stringify(bookData)); } catch(e){} }
+
+      // ---------- 初始化舞台 ----------
+      function initStage() {
+        if (stage) stage.destroy();
+        stage = new Konva.Stage({ container: 'konvaRoot', width: STAGE_W, height: STAGE_H });
+        bgLayer = new Konva.Layer(); stage.add(bgLayer);
+        elLayer = new Konva.Layer(); stage.add(elLayer);
+        transformer = new Konva.Transformer({
+          rotateEnabled: true, resizeEnabled: true, keepRatio: false,
+          boundBoxFunc: (old, n) => (n.width<15 || n.height<15) ? old : n
+        });
+        elLayer.add(transformer);
+
+        stage.on('click tap', e => {
+          if (e.target === stage || e.target === bgLayer) deselect();
+          else if (e.target.getAttr('elementId') && e.target !== transformer) select(e.target);
+        });
+        transformer.on('transform', () => { if(selectedNode) updatePropsPanelFromNode(); });
+        transformer.on('transformend', () => {
+          if(!selectedNode) return;
+          const node = selectedNode;
+          node.width(node.width() * node.scaleX()); node.height(node.height() * node.scaleY());
+          node.scaleX(1); node.scaleY(1);
+          syncElementDataFromNode(node);
+          stage.batchDraw();
+        });
+        stage.on('dragmove', e => { if(selectedNode && e.target===selectedNode) updatePropsPanelFromNode(); });
+        stage.on('dragend', e => { if(selectedNode && e.target===selectedNode) syncElementDataFromNode(e.target); });
+
+        renderPage();
+      }
+
+      // ---------- 渲染页面 ----------
+      function renderPage() {
+        if (!stage || STAGE_W === 0 || STAGE_H === 0) return;
+        bgLayer.destroyChildren();
+        elLayer.getChildren().forEach(n => { if(n!==transformer) n.destroy(); });
+        elementNodes.clear();
+        const page = currentPage();
+        if (page.backgroundImage) {
+          const img = new Image();
+          img.onload = () => {
+            bgLayer.add(new Konva.Image({ x:0,y:0,width:STAGE_W,height:STAGE_H,image:img,listening:false }));
+            bgLayer.batchDraw();
+          };
+          img.src = page.backgroundImage;
+        } else {
+          bgLayer.add(new Konva.Rect({ x:0,y:0,width:STAGE_W,height:STAGE_H,fill:'#f0ead6',listening:false }));
+          bgLayer.batchDraw();
+        }
+        page.elements.forEach(el => addElementToLayer(el));
+        elLayer.batchDraw();
+        deselect();
+        updateUI();
+      }
+
+      function addElementToLayer(el, selectAfter = false) {
+        let node;
+        const type = el.type;
+        if (type === 'character' || type === 'draggable') {
+          const group = new Konva.Group({
+            x: (el.x||0) * STAGE_W, y: (el.y||0) * STAGE_H,
+            draggable: true, name: el.id, elementId: el.id, elementType: type,
+            width: (el.width||0.15) * STAGE_W, height: (el.height||0.15) * STAGE_W,
+            rotation: el.rotation||0
+          });
+          const rect = new Konva.Rect({
+            width: group.width(), height: group.height(), fill: type==='character'?'#FFD166':'#A0C4FF',
+            stroke: '#333', strokeWidth: 2, name: 'placeholder'
+          });
+          group.add(rect);
+          if (el.image) {
+            const img = new Image();
+            img.onload = () => {
+              const imageNode = new Konva.Image({
+                image: img,
+                width: group.width(),
+                height: group.height(),
+                name: 'realImage',
+                crop: el.crop ? { x: el.crop.x, y: el.crop.y, width: el.crop.width, height: el.crop.height } : undefined
+              });
+              group.add(imageNode);
+              rect.hide();
+              elLayer.batchDraw();
+            };
+            img.src = el.image;
+          }
+          elLayer.add(group); node = group;
+        } else if (type === 'bubble') {
+          const group = new Konva.Group({
+            x: (el.x||0) * STAGE_W, y: (el.y||0) * STAGE_H,
+            draggable: true, name: el.id, elementId: el.id, elementType: 'bubble',
+            width: (el.width||0.2) * STAGE_W, height: (el.height||0.12) * STAGE_W,
+            rotation: el.rotation||0
+          });
+          const rect = new Konva.Rect({
+            width: group.width(), height: group.height(), fill: el.fill||'#7ec8a0',
+            cornerRadius: 18, name: 'bubbleRect'
+          });
+          const text = new Konva.Text({
+            text: el.text||'对话', fontSize: Math.max(12, (el.fontSize||16) * (STAGE_W/768)),
+            fontFamily: 'PingFang SC',
+            fill: el.fontColor||'#ffffff', fontStyle: 'normal',
+            width: group.width()-16, height: group.height()-12,
+            align: 'center', verticalAlign: 'middle', name: 'bubbleText'
+          });
+          group.add(rect, text);
+          elLayer.add(group); node = group;
+        } else if (type === 'clickable') {
+          const group = new Konva.Group({
+            x: (el.x||0) * STAGE_W, y: (el.y||0) * STAGE_H,
+            draggable: true, name: el.id, elementId: el.id, elementType: 'clickable',
+            width: (el.width||0.12) * STAGE_W, height: (el.height||0.12) * STAGE_W,
+            rotation: el.rotation||0
+          });
+          const rect = new Konva.Rect({
+            width: group.width(), height: group.height(), fill: (el.visual?.color||'#6c8cff'),
+            opacity: el.visual?.opacity||0.3, stroke: '#fff', strokeWidth: 1, name: 'clickRect'
+          });
+          group.add(rect);
+          elLayer.add(group); node = group;
+        }
+        if (node) {
+          elementNodes.set(el.id, node);
+          if (selectAfter) select(node);
+          elLayer.batchDraw();
+        }
+      }
+
+      function select(node) {
+        if (selectedNode === node) return;
+        selectedNode = node;
+        transformer.nodes([node]);
+        elLayer.moveToTop(); transformer.moveToTop();
+        showPropsForm(node);
+        stage.batchDraw();
+      }
+      function deselect() {
+        selectedNode = null;
+        transformer.nodes([]);
+        document.getElementById('propsForm').style.display = 'none';
+        document.getElementById('noSelect').style.display = 'block';
+        stage.batchDraw();
+      }
+
+      function showPropsForm(node) {
+        const form = document.getElementById('propsForm');
+        form.style.display = 'block';
+        document.getElementById('noSelect').style.display = 'none';
+        const type = node.getAttr('elementType');
+        document.getElementById('propX').value = (node.x() / STAGE_W).toFixed(3);
+        document.getElementById('propY').value = (node.y() / STAGE_H).toFixed(3);
+        document.getElementById('propW').value = (node.width() / STAGE_W).toFixed(3);
+        document.getElementById('propH').value = (node.height() / STAGE_H).toFixed(3);
+        document.getElementById('propR').value = Math.round(node.rotation());
+
+        const showImage = (type==='character'||type==='draggable');
+        document.getElementById('imageProp').style.display = showImage ? 'block' : 'none';
+        document.getElementById('bubbleProps').style.display = (type==='bubble') ? 'block' : 'none';
+        document.getElementById('actionProps').style.display = (type==='character'||type==='clickable') ? 'block' : 'none';
+        document.getElementById('dropZoneProps').style.display = (type==='draggable') ? 'block' : 'none';
+
+        const el = currentPage().elements.find(e => e.id === node.getAttr('elementId'));
+        if (!el) return;
+        if (showImage) {
+          document.getElementById('propImage').value = el.image || '';
+          const crop = el.crop || { x:0, y:0, width:100, height:100 };
+          document.getElementById('cropX').value = crop.x;
+          document.getElementById('cropY').value = crop.y;
+          document.getElementById('cropW').value = crop.width;
+          document.getElementById('cropH').value = crop.height;
+        }
+        if (type==='bubble') {
+          document.getElementById('bubbleText').value = el.text || '';
+          document.getElementById('bubbleColor').value = el.fontColor || '#ffffff';
+          document.getElementById('bubbleSize').value = el.fontSize || 16;
+        }
+        if (type==='character' || type==='clickable') {
+          document.getElementById('actionTextarea').value = JSON.stringify(el.onClick || [], null, 2);
+        }
+        if (type==='draggable') {
+          document.getElementById('dropZonesInput').value = (el.dropZones||[]).join(',');
+        }
+      }
+
+      function updatePropsPanelFromNode() {
+        if (!selectedNode || STAGE_W === 0) return;
+        document.getElementById('propX').value = (selectedNode.x() / STAGE_W).toFixed(3);
+        document.getElementById('propY').value = (selectedNode.y() / STAGE_H).toFixed(3);
+        document.getElementById('propW').value = (selectedNode.width() / STAGE_W).toFixed(3);
+        document.getElementById('propH').value = (selectedNode.height() / STAGE_H).toFixed(3);
+        document.getElementById('propR').value = Math.round(selectedNode.rotation());
+      }
+
+      function applyPropsFromPanel() {
+        if (!selectedNode || STAGE_W === 0) return;
+        const type = selectedNode.getAttr('elementType');
+        const el = currentPage().elements.find(e => e.id === selectedNode.getAttr('elementId'));
+        if (!el) return;
+        el.x = parseFloat(document.getElementById('propX').value) || 0;
+        el.y = parseFloat(document.getElementById('propY').value) || 0;
+        el.width = parseFloat(document.getElementById('propW').value) || 0.1;
+        el.height = parseFloat(document.getElementById('propH').value) || 0.1;
+        el.rotation = parseFloat(document.getElementById('propR').value) || 0;
+
+        if (type==='character'||type==='draggable') {
+          el.image = document.getElementById('propImage').value;
+          el.crop = {
+            x: parseInt(document.getElementById('cropX').value)||0,
+            y: parseInt(document.getElementById('cropY').value)||0,
+            width: parseInt(document.getElementById('cropW').value)||100,
+            height: parseInt(document.getElementById('cropH').value)||100
+          };
+        }
+        if (type==='bubble') {
+          el.text = document.getElementById('bubbleText').value;
+          el.fontColor = document.getElementById('bubbleColor').value;
+          el.fontSize = parseInt(document.getElementById('bubbleSize').value)||16;
+        }
+        if (type==='character'||type==='clickable') {
+          try { el.onClick = JSON.parse(document.getElementById('actionTextarea').value); } catch(e){}
+        }
+        if (type==='draggable') {
+          el.dropZones = document.getElementById('dropZonesInput').value.split(',').filter(s=>s.trim());
+        }
+
+        const node = selectedNode;
+        node.x(el.x * STAGE_W); node.y(el.y * STAGE_H);
+        node.width(el.width * STAGE_W); node.height(el.height * STAGE_H);
+        node.rotation(el.rotation);
+
+        if (type==='character'||type==='draggable') {
+          const imgNode = node.findOne('.realImage');
+          if (imgNode) {
+            imgNode.width(node.width()); imgNode.height(node.height());
+            if (el.crop) imgNode.crop(el.crop);
+            else imgNode.crop(undefined);
+          }
+          if (el.image !== selectedNode.getAttr('lastImage')) {
+            updateElementImage(selectedNode, el.image, el.crop);
+            selectedNode.setAttr('lastImage', el.image);
+          }
+        } else if (type==='bubble') {
+          node.findOne('.bubbleRect').width(node.width()).height(node.height()).fill(el.fill);
+          const textNode = node.findOne('.bubbleText');
+          textNode.width(node.width()-16).height(node.height()-12);
+          textNode.text(el.text).fill(el.fontColor).fontSize(Math.max(12, el.fontSize * (STAGE_W/768)));
+        }
+        stage.batchDraw();
+        save();
+      }
+
+      function updateElementImage(node, imageSrc, crop) {
+        if (!node) return;
+        const oldImg = node.findOne('.realImage');
+        if (oldImg) oldImg.destroy();
+        const rect = node.findOne('.placeholder');
+        if (imageSrc) {
+          const img = new Image();
+          img.onload = () => {
+            const newImg = new Konva.Image({
+              image: img, width: node.width(), height: node.height(),
+              name: 'realImage',
+              crop: crop ? { x:crop.x, y:crop.y, width:crop.width, height:crop.height } : undefined
+            });
+            node.add(newImg);
+            if (rect) rect.hide();
+            elLayer.batchDraw();
+          };
+          img.src = imageSrc;
+        } else {
+          if (rect) rect.show();
+          elLayer.batchDraw();
+        }
+      }
+
+      function syncElementDataFromNode(node) {
+        if (!node || STAGE_W === 0) return;
+        const el = currentPage().elements.find(e => e.id === node.getAttr('elementId'));
+        if (!el) return;
+        el.x = node.x() / STAGE_W;
+        el.y = node.y() / STAGE_H;
+        el.width = node.width() / STAGE_W;
+        el.height = node.height() / STAGE_H;
+        el.rotation = node.rotation();
+        updatePropsPanelFromNode();
+        save();
+      }
+
+      // 重置裁剪
+      document.getElementById('resetCropBtn').addEventListener('click', () => {
+        if (!selectedNode) return;
+        const type = selectedNode.getAttr('elementType');
+        if (type !== 'character' && type !== 'draggable') return;
+        const imgNode = selectedNode.findOne('.realImage');
+        if (!imgNode) return toast('请先添加图片');
+        const img = imgNode.image();
+        if (!img) return;
+        const naturalW = img.naturalWidth || img.width;
+        const naturalH = img.naturalHeight || img.height;
+        document.getElementById('cropX').value = 0;
+        document.getElementById('cropY').value = 0;
+        document.getElementById('cropW').value = naturalW;
+        document.getElementById('cropH').value = naturalH;
+        applyPropsFromPanel();
+        toast('裁剪已重置为完整图片');
+      });
+
+      // 绑定输入事件
+      ['propX','propY','propW','propH','propR','propImage','bubbleText','bubbleColor','bubbleSize','actionTextarea','dropZonesInput',
+       'cropX','cropY','cropW','cropH'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', applyPropsFromPanel);
+      });
+
+      document.getElementById('deleteElementBtn').addEventListener('click', () => {
+        if (!selectedNode) return toast('未选中元素');
+        const id = selectedNode.getAttr('elementId');
+        currentPage().elements = currentPage().elements.filter(e => e.id !== id);
+        selectedNode.destroy();
+        elementNodes.delete(id);
+        deselect();
+        renderPage();
+        save();
+      });
+
+      // ---------- 上传元素图片（智能设定初始比例） ----------
+      document.getElementById('uploadElementBtn').addEventListener('click', () => {
+        document.getElementById('elementImageInput').click();
+      });
+      document.getElementById('elementImageInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          const base64 = ev.target.result;
+          if (selectedNode) {
+            const type = selectedNode.getAttr('elementType');
+            if (type === 'character' || type === 'draggable') {
+              const el = currentPage().elements.find(e => e.id === selectedNode.getAttr('elementId'));
+              if (el) {
+                el.image = base64;
+                el.crop = null;
+                selectedNode.setAttr('lastImage', base64);
+                updateElementImage(selectedNode, base64, null);
+                document.getElementById('propImage').value = base64;
+                const img = new Image();
+                img.onload = function() {
+                  document.getElementById('cropX').value = 0;
+                  document.getElementById('cropY').value = 0;
+                  document.getElementById('cropW').value = img.naturalWidth;
+                  document.getElementById('cropH').value = img.naturalHeight;
+                  applyPropsFromPanel();
+                };
+                img.src = base64;
+                save();
+                toast('图片已更新');
+                e.target.value = '';
+                return;
+              }
+            }
+          }
+          // 新建角色元素，宽度比例固定0.2，高度根据图片比例计算
+          const img = new Image();
+          img.onload = function() {
+            const imgRatio = img.naturalHeight / img.naturalWidth;
+            const baseWidth = 0.2;
+            const newEl = {
+              id: genId(),
+              type: 'character',
+              x: 0.5, y: 0.5,
+              width: baseWidth,
+              height: baseWidth * imgRatio,
+              rotation: 0,
+              image: base64,
+              onClick: [],
+              crop: null
+            };
+            currentPage().elements.push(newEl);
+            addElementToLayer(newEl, true);
+            save();
+            updateUI();
+            toast('图片元素已添加');
+          };
+          img.src = base64;
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+      });
+
+      // ---------- 页面管理 ----------
+      document.getElementById('addPageBtn').addEventListener('click', () => {
+        if (bookData.pages.length >= 20) return toast('最多20页');
+        syncAll();
+        bookData.pages.push({ id: genId(), backgroundImage: '', elements: [], narrationText: '' });
+        bookData.currentPage = bookData.pages.length - 1;
+        renderPage(); save();
+      });
+      document.getElementById('dupPageBtn').addEventListener('click', () => {
+        if (bookData.pages.length >= 20) return toast('最多20页');
+        syncAll();
+        const clone = JSON.parse(JSON.stringify(currentPage()));
+        clone.id = genId(); clone.elements.forEach(e => e.id = genId());
+        bookData.pages.splice(bookData.currentPage+1, 0, clone);
+        bookData.currentPage++;
+        renderPage(); save();
+      });
+      function updateUI() {
+        const list = document.getElementById('pageList');
+        list.innerHTML = '';
+        bookData.pages.forEach((p, i) => {
+          const div = document.createElement('div');
+          div.className = 'page-item' + (i === bookData.currentPage ? ' active' : '');
+          div.innerHTML = `<span>第${i+1}页</span><span style="color:var(--text2);margin-left:auto;">${p.elements.length}个</span>`;
+          div.addEventListener('click', () => {
+            if (i === bookData.currentPage) return;
+            syncAll();
+            bookData.currentPage = i;
+            renderPage(); save();
+          });
+          list.appendChild(div);
+        });
+        document.getElementById('pageIndicator').textContent = `第${bookData.currentPage+1}/${bookData.pages.length}页`;
+        document.getElementById('narrationInput').value = currentPage().narrationText || '';
+      }
+      document.getElementById('narrationInput').addEventListener('input', () => {
+        currentPage().narrationText = document.getElementById('narrationInput').value; save();
+      });
+
+      function syncAll() {
+        if (selectedNode) syncElementDataFromNode(selectedNode);
+      }
+
+      // ---------- 拖入添加元素 ----------
+      canvasContainer.addEventListener('dragover', e => e.preventDefault());
+      canvasContainer.addEventListener('drop', e => {
+        e.preventDefault();
+        const type = e.dataTransfer.getData('text/plain');
+        if (!ELEMENT_TYPES[type]) return;
+        const rect = canvasContainer.getBoundingClientRect();
+        const xRatio = (e.clientX - rect.left) / STAGE_W;
+        const yRatio = (e.clientY - rect.top) / STAGE_H;
+        const defaults = ELEMENT_TYPES[type].defaultProps;
+        const newEl = {
+          id: genId(),
+          type: type,
+          x: xRatio, y: yRatio,
+          width: defaults.width || 0.15,
+          height: defaults.height || 0.15,
+          rotation: 0,
+          ...JSON.parse(JSON.stringify(defaults))
+        };
+        newEl.x = xRatio; newEl.y = yRatio;
+        currentPage().elements.push(newEl);
+        addElementToLayer(newEl, true);
+        save();
+        updateUI();
+        toast(`${ELEMENT_TYPES[type].label} 已添加`);
+      });
+
+      document.querySelectorAll('.el-item').forEach(item => {
+        item.addEventListener('dragstart', e => {
+          e.dataTransfer.setData('text/plain', e.target.dataset.type);
+        });
+      });
+
+      // ---------- 背景上传 ----------
+      document.getElementById('uploadBgBtn').addEventListener('click', ()=> document.getElementById('bgInput').click());
+      document.getElementById('bgInput').addEventListener('change', e => {
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          currentPage().backgroundImage = ev.target.result;
+          renderPage(); save();
+          toast('背景已更新');
+        };
+        reader.readAsDataURL(file); e.target.value = '';
+      });
+
+      // ---------- 导出/导入 ----------
+      document.getElementById('exportBtn').addEventListener('click', () => {
+        syncAll();
+        const exportData = {
+          meta: { title: bookData.title },
+          pages: bookData.pages.map(p => ({
+            id: p.id,
+            background: p.backgroundImage || 'bg-default.png',
+            narrationText: p.narrationText,
+            elements: p.elements.map(el => {
+              const clean = { id: el.id, type: el.type, props: {} };
+              if (el.type === 'character') {
+                clean.props = { image: el.image, x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation, onClick: el.onClick, crop: el.crop };
+              } else if (el.type === 'bubble') {
+                clean.props = { target: el.target, text: el.text, position: el.position, duration: el.duration, x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation, fill: el.fill, fontColor: el.fontColor, fontSize: el.fontSize };
+              } else if (el.type === 'clickable') {
+                clean.props = { hitArea: el.hitArea, visual: el.visual, onClick: el.onClick, x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation };
+              } else if (el.type === 'draggable') {
+                clean.props = { image: el.image, dropZones: el.dropZones, x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation, crop: el.crop };
+              }
+              return clean;
+            })
+          }))
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {type:'application/json'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (bookData.title || 'story') + '.json';
+        a.click();
+        toast('引擎JSON已导出');
+      });
+
+      document.getElementById('importBtn').addEventListener('click', ()=> document.getElementById('importFile').click());
+      document.getElementById('importFile').addEventListener('change', e => {
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            if (!data.pages) throw new Error('Invalid format');
+            syncAll();
+            bookData.title = data.meta?.title || '未命名';
+            bookData.pages = data.pages.map(p => ({
+              id: p.id || genId(),
+              backgroundImage: p.background || '',
+              narrationText: p.narrationText || '',
+              elements: p.elements.map(el => {
+                const base = { id: el.id, type: el.type, ...el.props };
+                if (!base.width) base.width = 0.15;
+                if (!base.height) base.height = 0.15;
+                if (!base.x) base.x = 0.5;
+                if (!base.y) base.y = 0.5;
+                if (!base.rotation) base.rotation = 0;
+                return base;
+              })
+            }));
+            bookData.currentPage = 0;
+            document.getElementById('bookTitle').value = bookData.title;
+            renderPage(); save();
+            toast('导入成功！');
+          } catch(ex) { toast('JSON格式错误'); }
+        };
+        reader.readAsText(file); e.target.value = '';
+      });
+
+      window.addEventListener('keydown', e => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'Delete' && selectedNode) {
+          document.getElementById('deleteElementBtn').click();
+        }
+      });
+
+      // ---------- 窗口大小变化自适应 ----------
+      window.addEventListener('resize', () => {
+        updateStageSize();
+      });
+
+      // 初始化
+      (function init() {
+        const stored = localStorage.getItem('storybook_editor');
+        if (stored) {
+          try {
+            const d = JSON.parse(stored);
+            if (d.pages && d.pages.length) bookData = d;
+          } catch(e){}
+        }
+        document.getElementById('bookTitle').value = bookData.title;
+        updateStageSize();  // 先计算尺寸
+        initStage();        // 再创建舞台
+        updateUI();
+        save();
+      })();
+    })();
+  </script>
+</body>
+</html>

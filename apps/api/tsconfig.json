@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"],
+    "paths": {
+      "@storybook-mvp/shared-types": ["../../packages/shared-types/src"]
+    }
+  },
+  "include": ["src"]
+}
