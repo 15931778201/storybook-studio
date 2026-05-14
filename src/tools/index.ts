@@ -11,5 +11,5 @@ export { JsonQueryTool } from './json-query';
 export { GitTool } from './git';
 export { NotificationTool } from './notification';
 export { ArchiveTool } from './archive';
-export { SkillDistillerTool } from './skill-distiller';
+// export { SkillDistillerTool } from './skill-distiller';
 

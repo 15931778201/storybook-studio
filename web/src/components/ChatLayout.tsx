@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { Bubble, Sender } from '@ant-design/x';
 import { XMarkdown } from '@ant-design/x-markdown';
-import rehypeHighlight from 'rehype-highlight';
 import { Button, Tooltip, message, Space } from 'antd';
 import { CopyOutlined, RedoOutlined, StopOutlined, EditOutlined, ExportOutlined } from '@ant-design/icons';
 import { useChatContext } from '../providers/ChatProvider';
@@ -13,6 +12,8 @@ import DiffEditor from './DiffEditor';
 import CodeBlock from './CodeBlock';
 import EmptyState from './EmptyState';
 import ImageUpload from './ImageUpload';
+import ThinkingPanel from './ThinkingPanel';
+import { getBubbleRole, getMessagePlacement, shouldRenderMessage } from '../utils/chat-presentation';
 
 const ConfirmDialog = lazy(() => import('./ConfirmDialog'));
 
@@ -41,6 +42,10 @@ export default function ChatLayout() {
 
   // 🔥 根据 contentType 选择渲染组件
   function renderMessageContent(msg: ChatMessage) {
+    if (msg.role === 'thinking') {
+      return <ThinkingPanel steps={msg.steps || []} />;
+    }
+
     switch (msg.contentType) {
       case 'plan':
         return <TaskPlanView goal={msg.metadata?.goal || ''} steps={msg.metadata?.steps || []} />;
@@ -48,9 +53,7 @@ export default function ChatLayout() {
       case 'decision':
         return (
           <DecisionTreeView
-            question={msg.content}
-            options={msg.metadata?.options || []}
-            chosen={msg.metadata?.chosen}
+            nodes={msg.metadata?.nodes || msg.metadata?.options || []}
           />
         );
 
@@ -58,7 +61,6 @@ export default function ChatLayout() {
         return (
           <StepPipelineView
             steps={msg.metadata?.steps || []}
-            currentStep={msg.metadata?.currentStep || 0}
           />
         );
 
@@ -67,7 +69,6 @@ export default function ChatLayout() {
           <DiffEditor
             original={msg.metadata?.original || ''}
             modified={msg.metadata?.modified || ''}
-            filePath={msg.metadata?.filePath || ''}
           />
         );
 
@@ -75,7 +76,6 @@ export default function ChatLayout() {
         return (
           <XMarkdown
             content={String(msg.content)}
-            rehypePlugins={[rehypeHighlight]}
             components={{
               code({ inline, className, children }: any) {
                 if (!inline && className) {
@@ -94,16 +94,16 @@ export default function ChatLayout() {
   }
 
   const items = messages
-    .filter(msg => msg.role !== 'thinking')
+    .filter(shouldRenderMessage)
     .map(msg => ({
       key: msg.id,
-      role: msg.role,
-      placement: (msg.role === 'user' ? 'end' : 'start') as 'end' | 'start',
+      role: getBubbleRole(msg.role),
+      placement: getMessagePlacement(msg.role),
       content: renderMessageContent(msg),
-      avatar: msg.role === 'user' ? '👤' : '🤖',
+      avatar: msg.role === 'user' ? '👤' : msg.role === 'system' ? '⚠️' : '🤖',
       footer: (
         <Space size="small">
-          {msg.role === 'user' ? (
+          {msg.role === 'thinking' ? null : msg.role === 'user' ? (
             <>
               <Tooltip title="编辑">
                 <Button

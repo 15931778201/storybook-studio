@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import type { ChatMessage, ConfirmRequest, Workspace } from '../types/messages';
+import type { ChatMessage, ConfirmRequest, ThinkingStep, Workspace } from '../types/messages';
+import { appendFinalMessage } from '../utils/chat-presentation';
 
 interface ChatContextValue {
   messages: ChatMessage[];
@@ -117,6 +118,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           const content = safeString(data.content);
 
           switch (data.type) {
+            case 'stream':
+              updateMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === 'assistant' && last.contentType === 'text') {
+                  return [...prev.slice(0, -1), { ...last, content: last.content + content }];
+                }
+                return [
+                  ...prev,
+                  { id: crypto.randomUUID(), role: 'assistant', content, contentType: 'text', timestamp: Date.now() },
+                ];
+              });
+              break;
             case 'text':
               updateMessages(prev => {
                 const last = prev[prev.length - 1];
@@ -176,7 +189,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               updateMessages(prev =>
                 prev.map(m => {
                   if (m.id !== thinkingIdRef.current) return m;
-                  const step = { id: crypto.randomUUID(), toolName: data.toolName, args: data.args, result: '', status: 'running' };
+                  const step: ThinkingStep = { id: crypto.randomUUID(), toolName: data.toolName, args: data.args, result: '', status: 'running' };
                   return { ...m, steps: [...(m.steps || []), step] };
                 })
               );
@@ -209,20 +222,30 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
             case 'final':
               updateMessages(prev =>
-                prev
-                  .filter(m => m.id !== thinkingIdRef.current && m.role !== 'assistant')
-                  .concat({ id: crypto.randomUUID(), role: 'assistant', content, contentType: 'text', timestamp: Date.now() })
+                appendFinalMessage(prev, thinkingIdRef.current, {
+                  id: crypto.randomUUID(),
+                  role: 'assistant',
+                  content,
+                  contentType: 'text',
+                  timestamp: Date.now(),
+                })
               );
+              thinkingIdRef.current = null;
               es.close();
               setIsRequesting(false);
               break;
 
             case 'error':
               updateMessages(prev =>
-                prev
-                  .filter(m => m.id !== thinkingIdRef.current)
-                  .concat({ id: crypto.randomUUID(), role: 'system', content: `错误: ${content}`, contentType: 'text', timestamp: Date.now() })
+                appendFinalMessage(prev, thinkingIdRef.current, {
+                  id: crypto.randomUUID(),
+                  role: 'system',
+                  content: `错误: ${content}`,
+                  contentType: 'text',
+                  timestamp: Date.now(),
+                })
               );
+              thinkingIdRef.current = null;
               es.close();
               setIsRequesting(false);
               break;

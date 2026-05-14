@@ -18,4 +18,25 @@ modelConfig.put('/', async (c) => {
   return c.json({ success: true });
 });
 
+// 模型配置 API
+modelConfig.post('/', async (c) => {
+  try {
+    const config = await c.req.json();
+    modelConfigStore.save({
+      id: crypto.randomUUID(),
+      model: config.model,
+      apiKey: config.apiKey,
+      baseURL: config.baseURL,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+      topP: 1,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+    });
+    return c.json({ success: true });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
 export { modelConfig };

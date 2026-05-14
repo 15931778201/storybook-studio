@@ -34,7 +34,7 @@ export default function WorkspaceTabs() {
         tabBarExtraContent={
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => setShowAdd(true)} />
         }
-        style={{ margin: 0, '.ant-tabs-nav': { marginBottom: 0 } }}
+        style={{ margin: 0 }}
       />
       <Modal title="添加工作区" open={showAdd} onOk={handleAdd} onCancel={() => setShowAdd(false)}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

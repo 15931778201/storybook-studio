@@ -10,6 +10,7 @@ import type { AgentConfig } from '../types/config';
 import type { Message, ToolCall } from '../types/message';
 import type { ConfirmRequest } from '../types/confirm';
 import { RoleProfile } from '../types/role';
+import { buildSystemPrompt } from '../context/system-prompt';
 
 // 判断两个工具调用结果是否相似（用于检测重复调用）
 function outputSimilar(a: string, b: string): boolean {
@@ -23,6 +24,63 @@ function isSufficientForQuery(query: string, output: string): boolean {
   const simplePatterns = ['日期', '时间', '星期', '今天', '版本', '列表', '列出', '查看'];
   const isSimple = simplePatterns.some(p => query.includes(p));
   return isSimple && output.length > 10 && output.length < 500;
+}
+
+// 从模型纯文本回复中解析工具调用意图
+export function parseToolCallFromText(text: string): { name: string; arguments: string } | null {
+  const match = text.match(/\[TOOL_CALL\]\s*([\s\S]*?)\s*\[\/TOOL_CALL\]/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[1].trim());
+    if (parsed.name) {
+      return { name: parsed.name, arguments: JSON.stringify(parsed.arguments || {}) };
+    }
+  } catch {}
+  return null;
+}
+
+export function shouldUseNativeTools(config: { model?: string; baseURL?: string; nativeTools?: boolean }): boolean {
+  if (config.nativeTools === false) return false;
+  const model = (config.model || '').toLowerCase();
+  const baseURL = (config.baseURL || '').toLowerCase();
+
+  // OpenRouter free/community routes often proxy models that either ignore tools or fail
+  // with provider-side 400/500 errors. Text tool mode avoids one doomed round trip.
+  if (baseURL.includes('openrouter.ai') && (model.endsWith(':free') || model.includes('/nemotron'))) {
+    return false;
+  }
+
+  return true;
+}
+
+export async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeoutHandle = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
+export function getModelErrorType(err: any): string {
+  const errStatus = err.status || err.code || '';
+  if (errStatus === 'ECONNABORTED' || err.message?.includes('timeout') || err.message?.includes('超时')) {
+    return '请求超时';
+  }
+  if (String(errStatus) === '429') return '请求过于频繁，被限流';
+  if (String(errStatus) === '403') return '请求被拒绝，请检查API Key权限';
+  if (/^5\d{2}$/.test(String(errStatus))) return '模型服务端错误';
+  if (String(errStatus) === '400') return '请求参数错误（可能是工具调用参数有误）';
+  return '模型服务异常';
+}
+
+export function buildModelErrorMessage(err: any): string {
+  return `❌ ${getModelErrorType(err)}\n📋 错误详情: ${err.message}`;
 }
 
 export class DefaultStepPipeline extends StepPipeline {
@@ -102,12 +160,21 @@ export class DefaultStepPipeline extends StepPipeline {
       console.log(`🤖 [迭代 ${iteration}] 调用模型...`);
       response = await retryWithBackoff(
         () => this.callModel(apiMessages, toolsDef),
-        { maxRetries: 1, initialDelayMs: 500, retryableErrors: ['timeout', '500', '429'] }
+        { maxRetries: 3, initialDelayMs: 1000, retryableErrors: ['timeout', '500', '429', '502', '503'] }
       );
       console.log(`✅ [迭代 ${iteration}] 模型响应成功`);
     } catch (err: any) {
       console.error(`❌ [迭代 ${iteration}] API 错误:`, err.message);
-      const errorMsg = `❌ API 错误: ${err.message}`;
+      // 降级：如果已有工具结果，将工具结果作为最终输出返回
+      const toolResults = messages.filter(m => m.role === 'tool' && m.content).map(m => m.content);
+      if (toolResults.length > 0) {
+        const fallbackOutput = toolResults.join('\n');
+        const warnMsg = `⚠️ [迭代 ${iteration}] ${getModelErrorType(err)}，降级返回已有工具结果\n\n${fallbackOutput}`;
+        console.log(warnMsg);
+        this.eventBus.emit(`message-${this.sessionId}`, { type: 'final', content: warnMsg });
+        return { done: true, finalOutput: fallbackOutput };
+      }
+      const errorMsg = buildModelErrorMessage(err);
       this.eventBus.emit(`message-${this.sessionId}`, { type: 'error', content: errorMsg });
       return { done: true, finalOutput: errorMsg };
     }
@@ -117,6 +184,26 @@ export class DefaultStepPipeline extends StepPipeline {
 
     // ========== 4. 纯文本回复 → 立即结束 ==========
     if (assistantMsg.content && !assistantMsg.tool_calls) {
+      // 尝试从纯文本中解析工具调用意图（用于不支持 function calling 的模型）
+      const textToolCall = parseToolCallFromText(assistantMsg.content);
+      if (textToolCall) {
+        console.log(`📝 从文本中解析到工具调用: ${textToolCall.name}`);
+        const fakeToolCall: ToolCall = {
+          id: `text_tc_${Date.now()}`,
+          type: 'function',
+          function: { name: textToolCall.name, arguments: textToolCall.arguments },
+        };
+        messages.push({
+          role: 'assistant',
+          content: assistantMsg.content.replace(/\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/, '').trim(),
+          tool_calls: [fakeToolCall],
+        });
+        const shouldStop = await this.executeSingleToolCall(fakeToolCall, messages);
+        if (shouldStop) {
+          return { done: true, finalOutput: (messages[messages.length - 1] as any).content };
+        }
+        return { done: false };
+      }
       this.eventBus.emit(`message-${this.sessionId}`, {
         type: 'final',
         content: assistantMsg.content,
@@ -185,18 +272,26 @@ export class DefaultStepPipeline extends StepPipeline {
     // 压缩历史
     const memories = await this.config.memory.getAll();
     messages = await this.config.contextMgr.compress(messages);
-    messages = this.config.contextMgr.injectSystemPrompt(messages, memories, '');
+    messages = this.config.contextMgr.injectSystemPrompt(messages, memories, '');    // 记忆注入
 
-    // 记忆注入
-    messages = this.config.contextMgr.injectSystemPrompt(messages, memories, '');
-
+    // ✅ 用 buildSystemPrompt 替代直接调 injectSystemPrompt
+    const fullSystemPrompt = buildSystemPrompt(
+      '你是一个高效的 AI 编程助手',  // basePrompt
+      memories,
+      ''  // projectContext
+    );
+    messages = [{ role: 'system', content: fullSystemPrompt }, ...messages];
     // 并行获取技能和知识，并缓存结果
     const [skillCtx, ragCtx] = await Promise.all([
       this.getCachedOrFetch('skill', () =>
-        this.skillManager ? this.skillManager.searchRelevantSkills(userInput, 2) : Promise.resolve('')
+        this.skillManager
+          ? withTimeout(this.skillManager.searchRelevantSkills(userInput, 2), 1500, '')
+          : Promise.resolve('')
       ),
       this.getCachedOrFetch('rag', () =>
-        this.knowledgeBase ? this.knowledgeBase.retrieve(userInput, 2) : Promise.resolve('')
+        this.knowledgeBase
+          ? withTimeout(this.knowledgeBase.retrieve(userInput, 2), 1500, '')
+          : Promise.resolve('')
       ),
     ]);
 
@@ -242,23 +337,119 @@ export class DefaultStepPipeline extends StepPipeline {
   // --- 模型调用（使用缓存的模型配置）---
   private async callModel(messages: Message[], toolsDef: any[]) {
     const currentConfig = this.modelConfigStore.get()!;
+    console.log(`📡 模型: ${currentConfig.model}, baseURL: ${currentConfig.baseURL}, tools: ${toolsDef.length}个, messages: ${messages.length}条`);
+
     const openai = new OpenAI({
       apiKey: currentConfig.apiKey,
       baseURL: currentConfig.baseURL,
-      timeout: 60_000,   // 降低超时，快速失败
+      timeout: 60_000,
       maxRetries: 1,
     });
 
-    return await openai.chat.completions.create({
+    const baseParams: any = {
       model: currentConfig.model,
       messages: messages as any,
-      tools: toolsDef,
-      temperature: Math.min(currentConfig.temperature, 0.5), // 限制温度加速响应
+      temperature: Math.min(currentConfig.temperature, 0.5),
       max_tokens: currentConfig.maxTokens || 2000,
       top_p: currentConfig.topP ?? 1,
       frequency_penalty: currentConfig.frequencyPenalty ?? 0,
       presence_penalty: currentConfig.presencePenalty ?? 0,
+      stream: true,
+    };
+
+    const nativeTools = shouldUseNativeTools({
+      model: currentConfig.model,
+      baseURL: currentConfig.baseURL,
+      nativeTools: (this.config as any).nativeTools,
     });
+
+    // 决定最终请求参数
+    const requestParams: any = { ...baseParams };
+    if (toolsDef.length > 0 && nativeTools) {
+      requestParams.tools = toolsDef;
+    } else if (toolsDef.length > 0) {
+      requestParams.messages = this.injectTextToolInstructions(baseParams.messages, toolsDef);
+    }
+
+    try {
+      const stream = await openai.chat.completions.create(requestParams);
+
+      let fullContent = '';
+      const toolCallsMap: Map<number, { id: string; function: { name: string; arguments: string } }> = new Map();
+
+      // 处理流式响应
+      for await (const chunk of stream as any as AsyncIterable<any>) {
+        const delta = chunk.choices[0]?.delta;
+        if (!delta) continue;
+
+        // 流式推送文本内容
+        if (delta.content) {
+          fullContent += delta.content;
+          this.eventBus.emit(`message-${this.sessionId}`, {
+            type: 'stream',
+            content: delta.content,
+          });
+        }
+
+        // 收集工具调用（流式拼接）
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index ?? 0;
+            if (!toolCallsMap.has(idx)) {
+              toolCallsMap.set(idx, { id: '', function: { name: '', arguments: '' } });
+            }
+            const entry = toolCallsMap.get(idx)!;
+            if (tc.id) entry.id = tc.id;
+            if (tc.function?.name) entry.function.name += tc.function.name;
+            if (tc.function?.arguments) entry.function.arguments += tc.function.arguments;
+          }
+        }
+      }
+
+      // 组装与原非流式返回格式一致的结果
+      const toolCallsArray = toolCallsMap.size > 0
+        ? Array.from(toolCallsMap.entries())
+            .sort(([a], [b]) => a - b)
+            .map(([, tc]) => ({
+              id: tc.id || `tc_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+              type: 'function' as const,
+              function: { name: tc.function.name, arguments: tc.function.arguments },
+            }))
+        : undefined;
+
+      return {
+        choices: [{
+          message: {
+            content: fullContent || null,
+            tool_calls: toolCallsArray,
+          },
+        }],
+      };
+    } catch (err: any) {
+      // 如果是 500/400 且有 tools，降级到非流式文本工具模式
+      if ((err.status === 500 || err.status === 400) && toolsDef.length > 0) {
+        console.warn(`⚠️ 流式调用失败，降级到非流式文本工具模式: model=${currentConfig.model}, status=${err.status}, message=${err.message}`);
+        const messagesWithTools = this.injectTextToolInstructions(baseParams.messages, toolsDef);
+        const fallbackParams: any = { ...baseParams, messages: messagesWithTools };
+        delete fallbackParams.stream;
+        return await openai.chat.completions.create(fallbackParams);
+      }
+      throw err;
+    }
+  }
+
+  private injectTextToolInstructions(messages: any[], toolsDef: any[]): any[] {
+    const toolDesc = toolsDef
+      .map((t: any) => `${t.function.name}: ${t.function.description}\n参数 JSON Schema: ${JSON.stringify(t.function.parameters)}`)
+      .join('\n\n');
+    const toolPrompt = `\n\n[可用工具]\n${toolDesc}\n\n如果需要调用工具，只输出以下格式，arguments 必须是合法 JSON 对象：\n[TOOL_CALL] {"name":"工具名","arguments":{}} [/TOOL_CALL]`;
+    const messagesWithTools = [...messages];
+    if (messagesWithTools.length > 0 && messagesWithTools[0].role === 'system') {
+      messagesWithTools[0] = { ...messagesWithTools[0], content: messagesWithTools[0].content + toolPrompt };
+    } else {
+      messagesWithTools.unshift({ role: 'system', content: toolPrompt });
+    }
+    return messagesWithTools;
   }
 
   // --- 工具调用解析 ---

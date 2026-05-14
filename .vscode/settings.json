@@ -1,4 +1,6 @@
 {
     "Codegeex.RepoIndex": true,
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "Codegeex.GenerationPreference": "automatic",
+    "Codegeex.CompletionDelay": 0.5
 }
