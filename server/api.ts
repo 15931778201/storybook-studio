@@ -44,6 +44,9 @@ import { WeComAdapter } from '../src/im/wecom-adapter';
 import { DingTalkAdapter } from '../src/im/dingtalk-adapter';
 import { FeishuAdapter } from '../src/im/feishu-adapter';
 import { registerAdditionalRoutes } from './context';
+import fs from 'fs';
+import path from 'path';
+import sharp from 'sharp';
 // import { rateLimit } from '../src/middleware/rate-limit';
 
 // 注册适配器
@@ -97,6 +100,25 @@ app.route('/api/cron', cron);
 app.route('/im', imRouter);
 app.route('/api/agents', agent);
 registerAdditionalRoutes(app);
+
+// 图片上传
+app.post('/api/upload/image', async (c) => {
+  const formData = await c.req.formData();
+  const file = formData.get('image') as File;
+  if (!file) return c.json({ success: false, message: 'Missing image' }, 400);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const resized = await sharp(buffer)
+    .resize(1024, 1024, { fit: 'inside' })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+  const base64 = resized.toString('base64');
+  const tempDir = path.join(process.cwd(), '.agent/temp');
+  fs.mkdirSync(tempDir, { recursive: true });
+  const tempPath = path.join(tempDir, `${Date.now()}.jpg`);
+  fs.writeFileSync(tempPath, resized);
+  return c.json({ success: true, dataUri: `data:image/jpeg;base64,${base64}`, tempPath });
+});
+
 app.get('/health', (c) => c.json({ status: 'ok', uptime: process.uptime() }));
 app.route('/', statics);
 export default app;
