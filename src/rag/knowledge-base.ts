@@ -1,4 +1,3 @@
-// src/rag/knowledge-base.ts
 import { FileVectorStore } from '../vector/file-vector-store';
 import { VectorDocument } from '../vector/vector-store';
 import { generateEmbeddings, generateSingleEmbedding } from '../vector/embeddings';
@@ -8,38 +7,59 @@ import path from 'path';
 export class KnowledgeBase {
   private vectorStore: FileVectorStore;
   private docsDir: string;
+  private kbId: string;
 
-  constructor(docsDir: string = '.agent/docs', vectorPath: string = '.agent/knowledge-vectors.json') {
-    this.docsDir = path.resolve(process.cwd(), docsDir);
+  constructor(kbId: string, docsDir: string, vectorPath: string) {
+    this.kbId = kbId;
+    this.docsDir = path.resolve(docsDir);
     this.vectorStore = new FileVectorStore(vectorPath);
     fs.mkdirSync(this.docsDir, { recursive: true });
   }
 
-  // 索引文档目录中的所有 Markdown/Text 文件
   async indexDocuments(): Promise<void> {
     const files = this.getAllFiles(this.docsDir);
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf-8');
-      const chunks = this.splitText(content, 500); // 每500字符一段
+      const chunks = this.splitText(content, 500);
       const docs: VectorDocument[] = chunks.map((chunk, i) => ({
         id: `${file}_chunk_${i}`,
         content: chunk,
         metadata: { source: file, chunk: i },
       }));
-      const texts = chunks;
-      const embeddings = await generateEmbeddings(texts);
+      const embeddings = await generateEmbeddings(chunks);
       await this.vectorStore.addDocuments(docs, embeddings);
     }
-    console.log(`✅ RAG 知识库索引完成: ${files.length} 个文件`);
+    console.log(`知识库 [${this.kbId}] 索引完成: ${files.length} 个文件`);
   }
 
-  // 检索相关知识
   async retrieve(query: string, topK: number = 3): Promise<string> {
     const queryEmbedding = await generateSingleEmbedding(query);
     const results = await this.vectorStore.similaritySearch(queryEmbedding, topK);
     if (results.length === 0) return '';
     const snippets = results.map(r => `[来源: ${r.metadata.source}] ${r.content}`);
-    return `📖 相关知识库内容：\n${snippets.join('\n\n')}`;
+    return `相关知识库内容：\n${snippets.join('\n\n')}`;
+  }
+
+  listFiles(): { name: string; size: number; mtime: Date }[] {
+    if (!fs.existsSync(this.docsDir)) return [];
+    return fs.readdirSync(this.docsDir)
+      .filter(f => fs.statSync(path.join(this.docsDir, f)).isFile())
+      .map(f => {
+        const stat = fs.statSync(path.join(this.docsDir, f));
+        return { name: f, size: stat.size, mtime: stat.mtime };
+      });
+  }
+
+  deleteFile(fileName: string): boolean {
+    const filePath = path.join(this.docsDir, fileName);
+    if (!fs.existsSync(filePath)) return false;
+    fs.unlinkSync(filePath);
+    return true;
+  }
+
+  getDocCount(): number {
+    if (!fs.existsSync(this.docsDir)) return 0;
+    return fs.readdirSync(this.docsDir).filter(f => fs.statSync(path.join(this.docsDir, f)).isFile()).length;
   }
 
   private readonly SUPPORTED_EXTS = new Set([
