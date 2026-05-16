@@ -30,7 +30,7 @@ export class KnowledgeBaseManager {
     if (!this.instances.has(id)) {
       const configs = this.loadConfig();
       const cfg = configs.find(c => c.id === id);
-      if (!cfg) throw new Error(`知识库 ${id} 不存在`);
+      if (!cfg) throw new Error(`Knowledge base ${id} not found`);
       const kbDir = this.kbDir(id);
       this.instances.set(id, new KnowledgeBase(id, path.join(kbDir, 'docs'), path.join(kbDir, 'vectors.json')));
     }
@@ -39,8 +39,9 @@ export class KnowledgeBaseManager {
 
   create(name: string, description: string = ''): KBConfig {
     const configs = this.loadConfig();
+    if (!name || !name.trim()) throw new Error('Name cannot be empty');
     if (configs.some(c => c.name === name)) {
-      throw new Error(`知识库 "${name}" 已存在`);
+      throw new Error(`Knowledge base "${name}" already exists`);
     }
     const id = 'kb-' + Date.now();
     const now = new Date().toISOString();
@@ -54,8 +55,9 @@ export class KnowledgeBaseManager {
   rename(id: string, name: string, description?: string): KBConfig {
     const configs = this.loadConfig();
     const entry = configs.find(c => c.id === id);
-    if (!entry) throw new Error(`知识库 ${id} 不存在`);
-    if (name) entry.name = name;
+    if (!entry) throw new Error(`Knowledge base ${id} not found`);
+    if (!name || !name.trim()) throw new Error('Name cannot be empty');
+    entry.name = name.trim();
     if (description !== undefined) entry.description = description;
     this.saveConfig(configs);
     this.instances.delete(id);
@@ -65,7 +67,7 @@ export class KnowledgeBaseManager {
   delete(id: string): void {
     const configs = this.loadConfig();
     const idx = configs.findIndex(c => c.id === id);
-    if (idx === -1) throw new Error(`知识库 ${id} 不存在`);
+    if (idx === -1) throw new Error(`Knowledge base ${id} not found`);
     configs.splice(idx, 1);
     this.saveConfig(configs);
     this.instances.delete(id);
@@ -152,6 +154,6 @@ export class KnowledgeBaseManager {
       fs.copyFileSync(legacyVectors, path.join(vectorsDir, 'vectors.json'));
       fs.unlinkSync(legacyVectors);
     }
-    console.log('已迁移旧版知识库到多知识库格式');
+    console.log('Migrated legacy knowledge base to multi-KB format');
   }
 }
