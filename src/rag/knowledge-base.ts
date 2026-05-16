@@ -51,15 +51,19 @@ export class KnowledgeBase {
   }
 
   deleteFile(fileName: string): boolean {
-    const filePath = path.join(this.docsDir, fileName);
-    if (!fs.existsSync(filePath)) return false;
-    fs.unlinkSync(filePath);
-    return true;
+    const resolved = path.resolve(this.docsDir, fileName);
+    if (!resolved.startsWith(this.docsDir + path.sep)) return false;
+    try {
+      if (!fs.existsSync(resolved)) return false;
+      fs.unlinkSync(resolved);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   getDocCount(): number {
-    if (!fs.existsSync(this.docsDir)) return 0;
-    return fs.readdirSync(this.docsDir).filter(f => fs.statSync(path.join(this.docsDir, f)).isFile()).length;
+    return this.listFiles().length;
   }
 
   private readonly SUPPORTED_EXTS = new Set([
