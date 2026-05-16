@@ -1,6 +1,6 @@
 // server/routes/memory.ts
 import { Hono } from 'hono';
-import { knowledgeBase } from '../context';
+import { knowledgeBaseManager } from '../context';
 
 const memory = new Hono();
 

@@ -2,7 +2,7 @@
 import { SkillManager } from '../src/skills/skill-manager';
 import { FileVectorStore } from '../src/vector/file-vector-store';
 import { ModelConfigStore } from '../src/storage/model-config-store';
-import { KnowledgeBase } from '../src/rag/knowledge-base';
+import { KnowledgeBaseManager } from '../src/rag/knowledge-manager';
 import { MCPClient } from '../src/mcp/mcp-client';
 import { ApiKeyStore } from '../src/security/key-store';
 import { logBus } from '../src/observability/log-bus';
@@ -16,9 +16,8 @@ export const skillManager = new SkillManager('.agent/skills', vectorStore);
 // 模型配置
 export const modelConfigStore = new ModelConfigStore('.agent/config.db');
 
-// 知识库
-export const knowledgeBase = new KnowledgeBase('.agent/docs', '.agent/knowledge-vectors.json');
-// 启动时可选择索引：knowledgeBase.indexDocuments();
+// 知识库管理器
+export const knowledgeBaseManager = new KnowledgeBaseManager();
 
 // MCP 客户端（按需初始化连接）
 export const mcpClient = new MCPClient();

@@ -130,7 +130,7 @@ import {
   ReadFileTool, WriteFileTool, BashTool, GrepTool,
   SkillCallerTool, ListSkillsTool, CreateSkillTool,
 } from '../../src';
-import { skillManager, modelConfigStore, knowledgeBase, mcpClient } from '../context';
+import { skillManager, modelConfigStore, knowledgeBaseManager, mcpClient } from '../context';
 import fs from 'fs';
 
 const chat = new Hono();
@@ -163,7 +163,7 @@ export function createAgent(sessionId: string, config: any): AgentLoop {
   return agentSessions.get(sessionId)!;
 }
 
-function buildAgentConfig(sessionId: string): any {
+function buildAgentConfig(sessionId: string, kbIds: string[] = []): any {
   const stored = modelConfigStore.get() || {} as any;
 
   return {
@@ -182,7 +182,9 @@ function buildAgentConfig(sessionId: string): any {
     policy: new DiffUndoPolicy({ backupDir: '.agent/backups', autoConfirm: false }),
     maxIterations: 15,
     skillManager,
-    knowledgeBase,
+    knowledgeBase: kbIds.length > 0
+      ? { retrieve: (query: string, topK: number) => knowledgeBaseManager.retrieve(query, kbIds, topK) }
+      : null,
     mcpClient,
     modelConfigStore,
   };
@@ -194,7 +196,8 @@ chat.get('/stream/:sessionId', async (c) => {
   const userInput = c.req.query('input');
   if (!userInput) return c.text('Missing input', 400);
 
-  const config = buildAgentConfig(sessionId);
+  const kbIds = c.req.query('kbIds')?.split(',').filter(Boolean) || [];
+  const config = buildAgentConfig(sessionId, kbIds);
 
   // 图片引用：从临时文件读取 base64
   const imageRef = c.req.query('imageRef');
