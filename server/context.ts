@@ -8,7 +8,7 @@ import { ApiKeyStore } from '../src/security/key-store';
 import { logBus } from '../src/observability/log-bus';
 
 // 向量存储
-export const vectorStore = new FileVectorStore('.agent');
+export const vectorStore = new FileVectorStore('.agent/vectors.json');
 
 // 技能管理器
 export const skillManager = new SkillManager('.agent/skills', vectorStore);

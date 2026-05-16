@@ -17,7 +17,7 @@ export class DiffUndoPolicy extends Policy {
   private classifyOp(toolName: string): OperationType {
     if (['read_file','grep','glob','list_skills'].includes(toolName)) return 'read';
     if (['write_file','edit_file'].includes(toolName)) return 'write';
-    if (['bash'].includes(toolName)) return 'execute';
+    if (['bash','create_skill','delete_skill','run_skill','update_skill'].includes(toolName)) return 'execute';
     return 'network';
   }
   async preExecute(tool: any, params: any): Promise<PolicyResult> {

@@ -3,7 +3,7 @@ import fs from 'fs'; import path from 'path';
 import { VectorStore, VectorDocument } from './vector-store';
 export class FileVectorStore implements VectorStore {
   private filePath: string; private vectors: any[] = [];
-  constructor(baseDir: string = '.agent') { this.filePath = path.join(baseDir, 'vectors.json'); this.load(); }
+  constructor(filePath: string = '.agent/vectors.json') { this.filePath = path.resolve(filePath); this.load(); }
   private load() { try { if (fs.existsSync(this.filePath)) this.vectors = JSON.parse(fs.readFileSync(this.filePath, 'utf-8')); } catch { this.vectors = []; } }
   async addDocuments(docs: VectorDocument[], embeddings: number[][]) {
     for (let i=0; i<docs.length; i++) this.vectors.push({ id: docs[i].id, content: docs[i].content, metadata: docs[i].metadata, embedding: embeddings[i] });

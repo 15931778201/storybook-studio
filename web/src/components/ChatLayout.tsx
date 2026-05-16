@@ -40,11 +40,8 @@ export default function ChatLayout() {
     (document.querySelector('.ant-sender-input') as HTMLElement)?.focus();
   }, []);
 
-  // 🔥 根据 contentType 选择渲染组件
   function renderMessageContent(msg: ChatMessage) {
-    if (msg.role === 'thinking') {
-      return <ThinkingPanel steps={msg.steps || []} />;
-    }
+    const steps = msg.steps || [];
 
     switch (msg.contentType) {
       case 'plan':
@@ -74,21 +71,31 @@ export default function ChatLayout() {
 
       default:
         return (
-          <XMarkdown
-            content={String(msg.content)}
-            components={{
-              code({ inline, className, children }: any) {
-                if (!inline && className) {
-                  return (
-                    <CodeBlock language={className.replace('language-', '')}>
-                      {String(children).replace(/\n$/, '')}
-                    </CodeBlock>
-                  );
-                }
-                return <code className={className}>{children}</code>;
-              },
-            }}
-          />
+          <div style={{ overflow: 'auto' }}>
+            <XMarkdown
+              content={String(msg.content)}
+              components={{
+                code({ inline, className, children }: any) {
+                  if (!inline && className) {
+                    return (
+                      <CodeBlock language={className.replace('language-', '')}>
+                        {String(children).replace(/\n$/, '')}
+                      </CodeBlock>
+                    );
+                  }
+                  return <code className={className}>{children}</code>;
+                },
+              }}
+            />
+            {steps.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
+                  🛠 执行过程 ({steps.length} 步)
+                </div>
+                <ThinkingPanel steps={steps} />
+              </div>
+            )}
+          </div>
         );
     }
   }
@@ -103,7 +110,7 @@ export default function ChatLayout() {
       avatar: msg.role === 'user' ? '👤' : msg.role === 'system' ? '⚠️' : '🤖',
       footer: (
         <Space size="small">
-          {msg.role === 'thinking' ? null : msg.role === 'user' ? (
+          {msg.role === 'user' ? (
             <>
               <Tooltip title="编辑">
                 <Button
@@ -122,7 +129,7 @@ export default function ChatLayout() {
                 />
               </Tooltip>
             </>
-          ) : (
+          ) : msg.content ? (
             <>
               <Tooltip title="复制">
                 <Button
@@ -150,7 +157,7 @@ export default function ChatLayout() {
                 />
               </Tooltip>
             </>
-          )}
+          ) : null}
         </Space>
       ),
     }));

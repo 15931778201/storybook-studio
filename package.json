@@ -7,10 +7,14 @@
     "setup": "bun run setup.ts",
     "dev": "bun run examples/dev-agent.ts",
     "test": "bun test",
-    "server": "bun run server/main.ts"
+    "server": "bun run server/main.ts",
+    "web": "cd ./web && bun run dev",
+    "index-project": "bun run scripts/index-project.ts"
   },
   "dependencies": {
+    "@ant-design/x-skill": "^2.7.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server-filesystem": "^2026.1.14",
     "@types/node": "^25.6.0",
     "adm-zip": "^0.5.17",
     "axios": "^1.16.0",

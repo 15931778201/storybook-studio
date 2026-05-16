@@ -131,12 +131,11 @@ import {
   SkillCallerTool, ListSkillsTool, CreateSkillTool,
 } from '../../src';
 import { skillManager, modelConfigStore, knowledgeBase, mcpClient } from '../context';
-import { ApiKeyStore } from '../../src/security/key-store';
+import fs from 'fs';
 
 const chat = new Hono();
 const eventBus = AgentEventBus.getInstance();
 const agentSessions = new Map<string, AgentLoop>();
-const keyStore = new ApiKeyStore();
 
 // 基础工具
 const baseTools = [
@@ -158,43 +157,25 @@ const allTools = [...baseTools, ...skillTools];
 
 export function createAgent(sessionId: string, config: any): AgentLoop {
   if (!agentSessions.has(sessionId)) {
-    const agent = new AgentLoop(config, sessionId);   // ✅ 只传两个参数
+    const agent = new AgentLoop(config, sessionId);
     agentSessions.set(sessionId, agent);
   }
   return agentSessions.get(sessionId)!;
 }
 
-function buildAgentConfig(sessionId: string, queryParams: (key: string) => string | undefined): any {
-  const model = queryParams('model') || process.env.OPENAI_MODEL || 'gpt-4o';
-  const baseURL = queryParams('baseURL') || process.env.OPENAI_BASE_URL || undefined;
-  const temperature = parseFloat(queryParams('temperature') || '0.7');
-  const maxTokens = parseInt(queryParams('maxTokens') || '8000', 10);
-  const hasImage = queryParams('image') === 'true';
-
-  // API Key 优先级：用户传入 > 加密存储 > 环境变量
-  let apiKey = queryParams('apiKey') || null;
-  if (!apiKey) {
-    try {
-      apiKey = modelConfigStore.apiKeyId
-        ? keyStore.getDecrypted(modelConfigStore.apiKeyId)
-        : null;
-    } catch {
-      // 解密失败则回退环境变量
-    }
-  }
-  if (!apiKey) apiKey = process.env.OPENAI_API_KEY || 'GPT-5.4';
+function buildAgentConfig(sessionId: string): any {
+  const stored = modelConfigStore.get() || {} as any;
 
   return {
-    model,
-    baseURL,
-    temperature,
-    maxTokens,
-    apiKey,
+    model: stored.model || process.env.OPENAI_MODEL || 'gpt-4o',
+    baseURL: stored.baseURL || process.env.OPENAI_BASE_URL || undefined,
+    apiKey: stored.apiKey || process.env.OPENAI_API_KEY || '',
+    temperature: stored.temperature ?? 0.7,
+    maxTokens: stored.maxTokens ?? 8192,
     tools: allTools,
-    supportsVision: hasImage,
     memory: new FileMemory({ path: `.agent/${sessionId}_memory.json` }),
     contextMgr: new SlidingWindowContextManager({
-      maxTokens: maxTokens,
+      maxTokens: (stored.maxTokens ?? 8192) * 2,
       keepRecentTurns: 6,
       compressionThreshold: 0.9,
     }),
@@ -213,8 +194,21 @@ chat.get('/stream/:sessionId', async (c) => {
   const userInput = c.req.query('input');
   if (!userInput) return c.text('Missing input', 400);
 
-  // 构建配置并获取 Agent 实例
-  const config = buildAgentConfig(sessionId, (key) => c.req.query(key));
+  const config = buildAgentConfig(sessionId);
+
+  // 图片引用：从临时文件读取 base64
+  const imageRef = c.req.query('imageRef');
+  if (imageRef) {
+    try {
+      if (fs.existsSync(imageRef)) {
+        const imageBuffer = fs.readFileSync(imageRef);
+        (config as any).imageBase64 = imageBuffer.toString('base64');
+      }
+    } catch (e) {
+      console.error('读取图片失败:', e);
+    }
+  }
+
   const agent = createAgent(sessionId, config);
 
   let streamClosed = false;
@@ -230,7 +224,11 @@ chat.get('/stream/:sessionId', async (c) => {
         }
       };
 
-      const confirmHandler = (req: any) => send({ type: 'confirm', ...req });
+      const confirmHandler = (req: any) => {
+        if (req.sessionId === sessionId) {
+          send({ type: 'confirm', ...req });
+        }
+      };
       eventBus.on('confirm-request', confirmHandler);
 
       const msgHandler = (data: any) => send(data);

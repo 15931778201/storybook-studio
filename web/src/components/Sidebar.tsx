@@ -3,23 +3,27 @@ import { useCallback, useState } from 'react';
 import { useChatContext } from '../providers/ChatProvider';
 
 export default function Sidebar() {
-  const { activeConversationId, setActiveConversationId, setMessages } = useChatContext();
-  const [items, setItems] = useState([{ key: activeConversationId, label: '默认对话' }]);
+  const { activeConversationId, setActiveConversationId, conversationTitles } = useChatContext();
+  const [keys, setKeys] = useState<string[]>([activeConversationId]);
+
+  const items = keys.map(key => ({
+    key,
+    label: conversationTitles[key] || '新对话',
+  }));
 
   const handleCreate = useCallback(() => {
     const newKey = 'conv-' + Date.now();
-    setItems(prev => [{ key: newKey, label: '新对话' }, ...prev]);
+    setKeys(prev => [newKey, ...prev]);
     setActiveConversationId(newKey);
-    setMessages([]);
-  }, [setActiveConversationId, setMessages]);
+  }, [setActiveConversationId]);
 
   const handleDelete = useCallback((key: string) => {
-    setItems(prev => prev.filter(i => i.key !== key));
+    setKeys(prev => prev.filter(k => k !== key));
     if (key === activeConversationId) {
-      const remaining = items.filter(i => i.key !== key);
+      const remaining = keys.filter(k => k !== key);
       if (remaining.length > 0) setActiveConversationId(remaining[0].key);
     }
-  }, [activeConversationId, items, setActiveConversationId]);
+  }, [activeConversationId, keys, setActiveConversationId]);
 
   return (
     <Conversations

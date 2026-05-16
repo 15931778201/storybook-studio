@@ -13,22 +13,13 @@ export class AgentLoop {
     private sessionId: string = 'default',
     pipeline?: StepPipeline
   ) {
-    // 优先使用注入的管道，否则自动创建优化的 DefaultStepPipeline
-    if (pipeline) {
-      this.pipeline = pipeline;
-    } else {
-      // 从 config 中获取 modelConfigStore（需确保已在 config 中提供）
-      const modelConfigStore = (config as any).modelConfigStore;
-      if (!modelConfigStore) {
-        throw new Error('AgentLoop 需要 modelConfigStore，请通过 config.modelConfigStore 传入');
-      }
-      this.pipeline = new DefaultStepPipeline(config, sessionId, modelConfigStore);
-    }
+    this.pipeline = pipeline || new DefaultStepPipeline(config, sessionId, (config as any).modelConfigStore);
     this.maxIterations = config.maxIterations;
   }
 
   async run(userInput: string, signal?: AbortSignal): Promise<string> {
-    const messages: Message[] = [{ role: 'user', content: userInput }];
+    const imageBase64 = (this.config as any).imageBase64 as string | undefined;
+    const messages: Message[] = [{ role: 'user', content: userInput, imageBase64 }];
 
     for (let iter = 1; iter <= this.maxIterations; iter++) {
       if (signal?.aborted) return '任务已被取消。';

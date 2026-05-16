@@ -14,9 +14,8 @@ import { buildSystemPrompt } from '../context/system-prompt';
 
 // 判断两个工具调用结果是否相似（用于检测重复调用）
 function outputSimilar(a: string, b: string): boolean {
-  const sampleA = a.slice(0, 200).trim();
-  const sampleB = b.slice(0, 200).trim();
-  return sampleA === sampleB && sampleA.length > 0;
+  const normalize = (s: string) => s.slice(0, 200).trim().replace(/\s+/g, ' ');
+  return normalize(a) === normalize(b) && a.length > 10;
 }
 
 // 判断工具结果是否已足够回答简单查询（启发式提前终止）
@@ -85,7 +84,7 @@ export function buildModelErrorMessage(err: any): string {
 
 export class DefaultStepPipeline extends StepPipeline {
   private eventBus = AgentEventBus.getInstance();
-  private modelConfigStore: ModelConfigStore;
+  private modelConfigStore: ModelConfigStore | null;
   private skillManager: any;
   private knowledgeBase: any;
   // 性能优化相关
@@ -95,10 +94,10 @@ export class DefaultStepPipeline extends StepPipeline {
   constructor(
     config: AgentConfig,
     sessionId: string,
-    modelConfigStore: ModelConfigStore
+    modelConfigStore?: ModelConfigStore
   ) {
     super(config, sessionId);
-    this.modelConfigStore = modelConfigStore;
+    this.modelConfigStore = modelConfigStore || null;
     this.skillManager = (config as any).skillManager || null;
     this.knowledgeBase = (config as any).knowledgeBase || null;
   }
@@ -136,9 +135,10 @@ export class DefaultStepPipeline extends StepPipeline {
     messages = await this.prepareContext(messages, userInput);
     const isVision = messages.some(m => m.imageBase64);
 
-    // Token 预算：超过 8000 token 时强制截断
-    if (tokenCount(messages) > 8000) {
-      messages = messages.slice(-20);
+    // Token 预算：按 contextMgr maxTokens 动态计算，保留最近 40 条消息
+    const budget = this.config.contextMgr?.options?.maxTokens ?? 24000;
+    if (tokenCount(messages) > budget) {
+      messages = messages.slice(-40);
     }
     const apiMessages = isVision
       ? this.buildVisionMessages(messages)
@@ -272,9 +272,7 @@ export class DefaultStepPipeline extends StepPipeline {
     // 压缩历史
     const memories = await this.config.memory.getAll();
     messages = await this.config.contextMgr.compress(messages);
-    messages = this.config.contextMgr.injectSystemPrompt(messages, memories, '');    // 记忆注入
 
-    // ✅ 用 buildSystemPrompt 替代直接调 injectSystemPrompt
     const fullSystemPrompt = buildSystemPrompt(
       '你是一个高效的 AI 编程助手',  // basePrompt
       memories,
@@ -334,32 +332,31 @@ export class DefaultStepPipeline extends StepPipeline {
     return tools;
   }
 
-  // --- 模型调用（使用缓存的模型配置）---
+  // --- 模型调用（使用 this.config 中的模型配置）---
   private async callModel(messages: Message[], toolsDef: any[]) {
-    const currentConfig = this.modelConfigStore.get()!;
-    console.log(`📡 模型: ${currentConfig.model}, baseURL: ${currentConfig.baseURL}, tools: ${toolsDef.length}个, messages: ${messages.length}条`);
+    console.log(`📡 模型: ${this.config.model}, baseURL: ${this.config.baseURL}, tools: ${toolsDef.length}个, messages: ${messages.length}条`);
 
     const openai = new OpenAI({
-      apiKey: currentConfig.apiKey,
-      baseURL: currentConfig.baseURL,
+      apiKey: this.config.apiKey,
+      baseURL: this.config.baseURL,
       timeout: 60_000,
       maxRetries: 1,
     });
 
     const baseParams: any = {
-      model: currentConfig.model,
+      model: this.config.model,
       messages: messages as any,
-      temperature: Math.min(currentConfig.temperature, 0.5),
-      max_tokens: currentConfig.maxTokens || 2000,
-      top_p: currentConfig.topP ?? 1,
-      frequency_penalty: currentConfig.frequencyPenalty ?? 0,
-      presence_penalty: currentConfig.presencePenalty ?? 0,
+      temperature: Math.min(this.config.temperature ?? 0.7, 0.5),
+      max_tokens: this.config.maxTokens || 4096,
+      top_p: 1,
+      frequency_penalty: 0,
+      presence_penalty: 0,
       stream: true,
     };
 
     const nativeTools = shouldUseNativeTools({
-      model: currentConfig.model,
-      baseURL: currentConfig.baseURL,
+      model: this.config.model,
+      baseURL: this.config.baseURL,
       nativeTools: (this.config as any).nativeTools,
     });
 
@@ -377,13 +374,17 @@ export class DefaultStepPipeline extends StepPipeline {
       let fullContent = '';
       const toolCallsMap: Map<number, { id: string; function: { name: string; arguments: string } }> = new Map();
 
-      // 处理流式响应
+      let finishReason = '';
       for await (const chunk of stream as any as AsyncIterable<any>) {
-        const delta = chunk.choices[0]?.delta;
-        if (!delta) continue;
+        const choice = chunk.choices?.[0];
+        if (!choice) continue;
+        const delta = choice.delta;
+        if (choice.finish_reason) {
+          finishReason = choice.finish_reason;
+        }
 
         // 流式推送文本内容
-        if (delta.content) {
+        if (delta?.content) {
           fullContent += delta.content;
           this.eventBus.emit(`message-${this.sessionId}`, {
             type: 'stream',
@@ -392,7 +393,7 @@ export class DefaultStepPipeline extends StepPipeline {
         }
 
         // 收集工具调用（流式拼接）
-        if (delta.tool_calls) {
+        if (delta?.tool_calls) {
           for (const tc of delta.tool_calls) {
             const idx = tc.index ?? 0;
             if (!toolCallsMap.has(idx)) {
@@ -404,6 +405,15 @@ export class DefaultStepPipeline extends StepPipeline {
             if (tc.function?.arguments) entry.function.arguments += tc.function.arguments;
           }
         }
+      }
+
+      if (finishReason === 'length') {
+        const appendix = '\n\n> ⚠️ 回复已达到最大 Token 限制，内容可能不完整。请在设置中增加"最大输出 Token"数值后重试。';
+        fullContent += appendix;
+        this.eventBus.emit(`message-${this.sessionId}`, {
+          type: 'stream',
+          content: appendix,
+        });
       }
 
       // 组装与原非流式返回格式一致的结果
@@ -428,7 +438,7 @@ export class DefaultStepPipeline extends StepPipeline {
     } catch (err: any) {
       // 如果是 500/400 且有 tools，降级到非流式文本工具模式
       if ((err.status === 500 || err.status === 400) && toolsDef.length > 0) {
-        console.warn(`⚠️ 流式调用失败，降级到非流式文本工具模式: model=${currentConfig.model}, status=${err.status}, message=${err.message}`);
+        console.warn(`⚠️ 流式调用失败，降级到非流式文本工具模式: model=${this.config.model}, status=${err.status}, message=${err.message}`);
         const messagesWithTools = this.injectTextToolInstructions(baseParams.messages, toolsDef);
         const fallbackParams: any = { ...baseParams, messages: messagesWithTools };
         delete fallbackParams.stream;
@@ -581,7 +591,8 @@ export class DefaultStepPipeline extends StepPipeline {
       this.lastToolCalls.set(callKey, { args: JSON.stringify(args), output: result.output });
 
       // ----- 简单查询提前终止 -----
-      if (isSufficientForQuery(messages[0]?.content || '', result.output)) {
+      const userMsg = messages.find(m => m.role === 'user');
+      if (isSufficientForQuery(userMsg?.content || '', result.output)) {
         // 将工具输出包装成最终答案，避免继续循环
         messages.push({
           role: 'assistant',

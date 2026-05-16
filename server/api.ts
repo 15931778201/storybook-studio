@@ -43,6 +43,7 @@ import { imRouter, registerAdapter } from './im/gateway';
 import { WeComAdapter } from '../src/im/wecom-adapter';
 import { DingTalkAdapter } from '../src/im/dingtalk-adapter';
 import { FeishuAdapter } from '../src/im/feishu-adapter';
+import { registerAdditionalRoutes } from './context';
 // import { rateLimit } from '../src/middleware/rate-limit';
 
 // 注册适配器
@@ -70,6 +71,22 @@ if (process.env.FEISHU_APP_SECRET) {
 // 挂载路由
 const app = new Hono();
 
+app.use('/api/*', async (c, next) => {
+  const configuredToken = process.env.API_SECRET_TOKEN;
+  if (!configuredToken) {
+    await next();
+    return;
+  }
+
+  const auth = c.req.header('Authorization');
+  const token = auth?.replace('Bearer ', '');
+  if (token !== configuredToken) {
+    return c.text('Forbidden', 403);
+  }
+
+  await next();
+});
+
 app.route('/api', chat);
 app.route('/api/skills', skills);
 app.route('/api/model-config', modelConfig);
@@ -79,18 +96,7 @@ app.route('/api/market', market);
 app.route('/api/cron', cron);
 app.route('/im', imRouter);
 app.route('/api/agents', agent);
+registerAdditionalRoutes(app);
 app.get('/health', (c) => c.json({ status: 'ok', uptime: process.uptime() }));
 app.route('/', statics);
-
-app.use('/api/*', async (c, next) => {
-  const auth = c.req.header('Authorization');
-  const token = auth?.replace('Bearer ', '');
-  // const ip = c.req.header('x-forwarded-for') || 'unknown';
-  // const allowed = await rateLimit(`ratelimit:${ip}`, 60, 60); // 60次/分
-  if (token !== process.env.API_SECRET_TOKEN) {
-    return c.text('Forbidden', 403);
-  }
-  // if (!allowed) return c.text('Too Many Requests', 429);  // 限流
-  await next();
-});
 export default app;

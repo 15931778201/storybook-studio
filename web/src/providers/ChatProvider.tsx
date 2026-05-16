@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import type { ChatMessage, ConfirmRequest, ThinkingStep, Workspace } from '../types/messages';
-import { appendFinalMessage } from '../utils/chat-presentation';
 
 interface ChatContextValue {
   messages: ChatMessage[];
@@ -18,6 +17,8 @@ interface ChatContextValue {
   addWorkspace: (n: string, p: string) => void;
   activeRole: any | null;
   setActiveRole: (r: any | null) => void;
+  conversationTitles: Record<string, string>;
+  updateConversationTitle: (id: string, title: string) => void;
 }
 
 const ChatContext = createContext<ChatContextValue>(null!);
@@ -54,6 +55,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const [isRequesting, setIsRequesting] = useState(false);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [conversationTitles, setConversationTitles] = useState<Record<string, string>>({});
+  const updateConversationTitle = useCallback((id: string, title: string) => {
+    setConversationTitles(prev => ({ ...prev, [id]: title }));
+  }, []);
   const confirmResolverRef = useRef<((b: boolean) => void) | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const thinkingIdRef = useRef<string | null>(null);
@@ -83,30 +88,50 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   };
 
   const sendMessage = useCallback(
-    (text: string, image?: string | null) => {
+    async (text: string, image?: string | null) => {
       if (!text.trim() || isRequesting) return;
 
+      const trimmed = text.trim();
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'user',
-        content: text.trim(),
+        content: trimmed,
         contentType: 'text',
         timestamp: Date.now(),
         imageBase64: image || undefined,
       };
       updateMessages(prev => [...prev, userMsg]);
+
+      if (!conversationTitles[activeConversationId]) {
+        const title = trimmed.length > 30 ? trimmed.slice(0, 30) + '…' : trimmed;
+        updateConversationTitle(activeConversationId, title);
+      }
       setIsRequesting(true);
 
-      const thinkId = crypto.randomUUID();
-      thinkingIdRef.current = thinkId;
+      const assistantId = crypto.randomUUID();
+      thinkingIdRef.current = assistantId;
       updateMessages(prev => [
         ...prev,
-        { id: thinkId, role: 'thinking', content: '思考中…', contentType: 'text', timestamp: Date.now(), steps: [] },
+        { id: assistantId, role: 'assistant', content: '', contentType: 'text', timestamp: Date.now(), steps: [] },
       ]);
 
       const params = new URLSearchParams({ input: text });
-      if (activeRole) params.append('role', JSON.stringify(activeRole));
-      if (image) params.append('image', 'true');
+
+      // 图片预上传：先上传到后端，再传引用路径
+      if (image) {
+        try {
+          const blob = await (await fetch(image)).blob();
+          const formData = new FormData();
+          formData.append('image', blob, 'chat-image.jpg');
+          const uploadRes = await fetch('/api/upload/image', { method: 'POST', body: formData });
+          const uploadData = await uploadRes.json();
+          if (uploadData.tempPath) {
+            params.append('imageRef', uploadData.tempPath);
+          }
+        } catch (e) {
+          console.error('图片上传失败:', e);
+        }
+      }
 
       const url = `/api/stream/${activeConversationId}?${params.toString()}`;
       const es = new EventSource(url);
@@ -119,28 +144,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
           switch (data.type) {
             case 'stream':
-              updateMessages(prev => {
-                const last = prev[prev.length - 1];
-                if (last && last.role === 'assistant' && last.contentType === 'text') {
-                  return [...prev.slice(0, -1), { ...last, content: last.content + content }];
-                }
-                return [
-                  ...prev,
-                  { id: crypto.randomUUID(), role: 'assistant', content, contentType: 'text', timestamp: Date.now() },
-                ];
-              });
-              break;
             case 'text':
-              updateMessages(prev => {
-                const last = prev[prev.length - 1];
-                if (last && last.role === 'assistant' && last.contentType === 'text') {
-                  return [...prev.slice(0, -1), { ...last, content: last.content + content }];
-                }
-                return [
-                  ...prev,
-                  { id: crypto.randomUUID(), role: 'assistant', content, contentType: 'text', timestamp: Date.now() },
-                ];
-              });
+              updateMessages(prev => prev.map(m =>
+                m.id === thinkingIdRef.current
+                  ? { ...m, content: m.content + content }
+                  : m
+              ));
               break;
 
             case 'plan':
@@ -221,30 +230,22 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               break;
 
             case 'final':
-              updateMessages(prev =>
-                appendFinalMessage(prev, thinkingIdRef.current, {
-                  id: crypto.randomUUID(),
-                  role: 'assistant',
-                  content,
-                  contentType: 'text',
-                  timestamp: Date.now(),
-                })
-              );
+              updateMessages(prev => prev.map(m =>
+                m.id === thinkingIdRef.current
+                  ? { ...m, content }
+                  : m
+              ));
               thinkingIdRef.current = null;
               es.close();
               setIsRequesting(false);
               break;
 
             case 'error':
-              updateMessages(prev =>
-                appendFinalMessage(prev, thinkingIdRef.current, {
-                  id: crypto.randomUUID(),
-                  role: 'system',
-                  content: `错误: ${content}`,
-                  contentType: 'text',
-                  timestamp: Date.now(),
-                })
-              );
+              updateMessages(prev => prev.map(m =>
+                m.id === thinkingIdRef.current
+                  ? { ...m, content: `错误: ${content}` }
+                  : m
+              ));
               thinkingIdRef.current = null;
               es.close();
               setIsRequesting(false);
@@ -254,11 +255,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       };
 
       es.onerror = () => {
+        if (thinkingIdRef.current) {
+          updateMessages(prev => prev.map(m =>
+            m.id === thinkingIdRef.current
+              ? { ...m, content: m.content || '⚠️ 连接已断开，请检查后端服务是否正常运行，然后重试。' }
+              : m
+          ));
+          thinkingIdRef.current = null;
+        }
         es.close();
         setIsRequesting(false);
       };
     },
-    [activeConversationId, activeRole, isRequesting, updateMessages]
+    [activeConversationId, activeRole, isRequesting, updateMessages, conversationTitles, updateConversationTitle]
   );
 
   useEffect(() => {
@@ -283,6 +292,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         addWorkspace,
         activeRole,
         setActiveRole,
+        conversationTitles,
+        updateConversationTitle,
       }}
     >
       {children}

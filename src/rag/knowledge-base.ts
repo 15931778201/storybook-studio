@@ -11,7 +11,7 @@ export class KnowledgeBase {
 
   constructor(docsDir: string = '.agent/docs', vectorPath: string = '.agent/knowledge-vectors.json') {
     this.docsDir = path.resolve(process.cwd(), docsDir);
-    this.vectorStore = new FileVectorStore(path.dirname(vectorPath));
+    this.vectorStore = new FileVectorStore(vectorPath);
     fs.mkdirSync(this.docsDir, { recursive: true });
   }
 
@@ -42,19 +42,23 @@ export class KnowledgeBase {
     return `📖 相关知识库内容：\n${snippets.join('\n\n')}`;
   }
 
+  private readonly SUPPORTED_EXTS = new Set([
+    '.md', '.txt', '.parsed.txt', '.ts', '.tsx', '.js', '.jsx',
+    '.py', '.java', '.c', '.cpp', '.h', '.go', '.rs', '.vue',
+    '.css', '.html', '.sh', '.sql', '.json', '.xml', '.yaml', '.yml', '.csv',
+  ]);
+
   private getAllFiles(dir: string): string[] {
     let results: string[] = [];
     const list = fs.readdirSync(dir, { withFileTypes: true });
     for (const item of list) {
       const fullPath = path.join(dir, item.name);
       if (item.isDirectory()) {
+        if (item.name === 'node_modules' || item.name === '.git' || item.name === 'dist') continue;
         results = results.concat(this.getAllFiles(fullPath));
-      } else if (
-        item.name.endsWith('.md') ||
-        item.name.endsWith('.txt') ||
-        item.name.endsWith('.parsed.txt')
-      ) {
-        results.push(fullPath);
+      } else {
+        const ext = path.extname(item.name).toLowerCase();
+        if (this.SUPPORTED_EXTS.has(ext)) results.push(fullPath);
       }
     }
     return results;

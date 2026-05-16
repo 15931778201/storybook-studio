@@ -9,6 +9,7 @@ import {
   WriteFileTool,
   BashTool,
   GrepTool,
+  KnowledgeBase,
 } from '../src/index';
 
 const apiKey = process.env.OPENAI_API_KEY;
@@ -24,6 +25,8 @@ if (!model) {
 
 console.log('✅ API Key 已加载:', apiKey.slice(0, 8) + '...');
 
+const knowledgeBase = new KnowledgeBase('.agent/docs', '.agent/knowledge-vectors.json');
+
 const agent = new AgentLoop({
   model,
   apiKey,
@@ -36,6 +39,7 @@ const agent = new AgentLoop({
   }),
   policy: new DiffUndoPolicy({ backupDir: '.agent/backups', autoConfirm: false }),
   maxIterations: 15,
+  knowledgeBase,
 });
 
 // 设置确认回调

@@ -1,8 +1,8 @@
 # 构建前端
 FROM oven/bun:latest AS web-builder
 WORKDIR /app/web
-COPY web/package.json web/bun.lockb ./
-RUN bun install --frozen-lockfile
+COPY web/package.json ./
+RUN bun install
 COPY web/ ./
 RUN bun run build
 

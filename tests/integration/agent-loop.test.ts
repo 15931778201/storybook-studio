@@ -47,8 +47,20 @@ describe('AgentLoop 集成测试', () => {
       compressionThreshold: 0.9,
     }),
     policy: new DefaultPolicy(),
+    modelConfigStore: {
+      get: () => ({
+        model: 'gpt-4o',
+        apiKey: 'fake-key',
+        baseURL: 'https://api.openai.com/v1',
+        temperature: 0.7,
+        maxTokens: 100,
+        topP: 1,
+        frequencyPenalty: 0,
+        presencePenalty: 0,
+      }),
+    } as any,
     maxIterations: 5,
-  };
+  } as AgentConfig;
 
   afterEach(() => {
     // 清理内存文件

@@ -2,6 +2,8 @@ export interface AgentConfig {
   model: string;
   apiKey?: string;
   baseURL?: string;
+  temperature?: number;
+  maxTokens?: number;
   tools: any[];
   memory: any;
   contextMgr: any;

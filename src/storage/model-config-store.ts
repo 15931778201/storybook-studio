@@ -7,7 +7,7 @@ const DEFAULT_CONFIG: ModelConfig = {
   apiKey: process.env.OPENAI_API_KEY || "",
   baseURL: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
   temperature: 0.7,
-  maxTokens: 4096,
+  maxTokens: 8192,
   topP: 1,
   frequencyPenalty: 0,
   presencePenalty: 0,

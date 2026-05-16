@@ -16,7 +16,7 @@ export abstract class Tool {
   protected abstract executeCore(validatedParams: unknown): Promise<ToolResult>;
 }
 export async function safeExecute(toolName: string, fn: () => Promise<ToolResult>, options?: { timeout?: number; maxOutput?: number; fallback?: () => Promise<ToolResult> }): Promise<ToolResult> {
-  const maxOutput = options?.maxOutput ?? 4000;
+  const maxOutput = options?.maxOutput ?? 10000;
   let timeoutMs = options?.timeout ?? 30000;
   if (typeof timeoutMs !== 'number' || isNaN(timeoutMs) || timeoutMs <= 0) timeoutMs = 30000;
   if (timeoutMs > 2147483647) timeoutMs = 2147483647;
