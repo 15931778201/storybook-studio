@@ -24,8 +24,19 @@ export interface ConfirmRequest {
   diff: string;
 }
 
+export interface PlanStep {
+  stepId: number;
+  description: string;
+  tool: string;
+  args: Record<string, any>;
+  status: 'pending' | 'running' | 'done' | 'error';
+  dependsOn?: number[];
+  duration?: number;
+}
+
 export interface Workspace {
   id: string;
   name: string;
   projectPath: string;
+  knowledgeBaseIds: string[];
 }

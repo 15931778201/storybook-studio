@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import type { ChatMessage, ConfirmRequest, ThinkingStep, Workspace } from '../types/messages';
+import type { ChatMessage, ConfirmRequest, ThinkingStep, PlanStep, Workspace } from '../types/messages';
 
 interface ChatContextValue {
   messages: ChatMessage[];
@@ -14,7 +14,7 @@ interface ChatContextValue {
   workspaces: Workspace[];
   activeWorkspaceId: string;
   setActiveWorkspaceId: (id: string) => void;
-  addWorkspace: (n: string, p: string) => void;
+  addWorkspace: (n: string, p: string, kbIds?: string[]) => void;
   activeRole: any | null;
   setActiveRole: (r: any | null) => void;
   conversationTitles: Record<string, string>;
@@ -39,7 +39,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [activeConversationId, setActiveConversationId] = useState('conv-' + Date.now());
   const [activeWorkspaceId, setActiveWorkspaceId] = useState('default');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([
-    { id: 'default', name: '默认工作区', projectPath: '.' },
+    { id: 'default', name: '默认工作区', projectPath: '.', knowledgeBaseIds: [] },
   ]);
   const [activeRole, setActiveRole] = useState<any | null>(null);
 
@@ -81,8 +81,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setConfirmRequest(null);
   };
 
-  const addWorkspace = (name: string, projectPath: string) => {
-    const ws: Workspace = { id: 'ws-' + Date.now(), name, projectPath };
+  const addWorkspace = (name: string, projectPath: string, knowledgeBaseIds: string[] = []) => {
+    const ws: Workspace = { id: 'ws-' + Date.now(), name, projectPath, knowledgeBaseIds };
     setWorkspaces(prev => [...prev, ws]);
     setActiveWorkspaceId(ws.id);
   };
@@ -131,6 +131,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         } catch (e) {
           console.error('图片上传失败:', e);
         }
+      }
+
+      const activeWs = workspaces.find(w => w.id === activeWorkspaceId);
+      if (activeWs?.knowledgeBaseIds?.length) {
+        params.append('kbIds', activeWs.knowledgeBaseIds.join(','));
       }
 
       const url = `/api/stream/${activeConversationId}?${params.toString()}`;
@@ -192,6 +197,33 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                   timestamp: Date.now(),
                 },
               ]);
+              break;
+
+            case 'plan-step-update':
+              updateMessages(prev => prev.map(m => {
+                if (m.contentType !== 'plan' || !m.metadata?.steps) return m;
+                const updatedSteps = (m.metadata.steps as PlanStep[]).map(s =>
+                  s.stepId === data.stepId
+                    ? { ...s, status: data.status, duration: data.duration ?? s.duration }
+                    : s
+                );
+                return { ...m, metadata: { ...m.metadata, steps: updatedSteps } };
+              }));
+              break;
+
+            case 'replan':
+              updateMessages(prev => prev.map(m => {
+                if (m.contentType !== 'plan') return m;
+                return {
+                  ...m,
+                  content: `🔄 步骤 ${data.failedStepId} 失败，正在重新规划…`,
+                  metadata: {
+                    ...m.metadata,
+                    replanReason: data.reason,
+                    remainingSteps: data.remainingSteps,
+                  },
+                };
+              }));
               break;
 
             case 'tool-start':
@@ -267,7 +299,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setIsRequesting(false);
       };
     },
-    [activeConversationId, activeRole, isRequesting, updateMessages, conversationTitles, updateConversationTitle]
+    [activeConversationId, activeRole, isRequesting, updateMessages, conversationTitles, updateConversationTitle, workspaces, activeWorkspaceId]
   );
 
   useEffect(() => {
