@@ -4,6 +4,7 @@ export { Memory } from './core/memory';
 export { ContextManager } from './core/context-manager';
 export { Policy } from './core/policy';
 export { AgentLoop } from './core/agent-loop';
+export { AdaptivePipeline } from './core/adaptive-pipeline';
 export { Orchestrator } from './core/orchestrator';
 export { AgentState } from './core/state';
 
@@ -48,3 +49,4 @@ export { FileVectorStore } from './vector/file-vector-store';
 
 export { MCPClient } from './mcp/mcp-client';
 export { KnowledgeBase } from './rag/knowledge-base';
+export { KnowledgeBaseManager } from './rag/knowledge-manager';
