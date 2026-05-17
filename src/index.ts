@@ -39,6 +39,7 @@ export type { AgentConfig } from './types/config';
 
 // Skill 相关
 export { SkillManager } from './skills/skill-manager';
+export { SkillImporter } from './skills/skill-importer';
 export { SkillExecutor } from './skills/skill-executor';
 export { SkillCallerTool, ListSkillsTool } from './tools/skill-caller';
 export { CreateSkillTool, UpdateSkillTool } from './tools/skill-creator';
