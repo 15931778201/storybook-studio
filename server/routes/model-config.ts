@@ -32,6 +32,9 @@ modelConfig.post('/', async (c) => {
       topP: 1,
       frequencyPenalty: 0,
       presencePenalty: 0,
+      embeddingModel: config.embeddingModel || process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
+      embeddingApiKey: config.embeddingApiKey || process.env.EMBEDDING_API_KEY || '',
+      embeddingBaseURL: config.embeddingBaseURL || process.env.EMBEDDING_BASE_URL || '',
     });
     return c.json({ success: true });
   } catch (err: any) {

@@ -11,6 +11,9 @@ const DEFAULT_CONFIG: ModelConfig = {
   topP: 1,
   frequencyPenalty: 0,
   presencePenalty: 0,
+  embeddingModel: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
+  embeddingApiKey: process.env.EMBEDDING_API_KEY || "",
+  embeddingBaseURL: process.env.EMBEDDING_BASE_URL || "",
 };
 
 export class ModelConfigStore {
@@ -38,9 +41,15 @@ export class ModelConfigStore {
         top_p REAL NOT NULL DEFAULT 1.0,
         frequency_penalty REAL NOT NULL DEFAULT 0.0,
         presence_penalty REAL NOT NULL DEFAULT 0.0,
+        embedding_model TEXT NOT NULL DEFAULT 'text-embedding-3-small',
+        embedding_api_key TEXT NOT NULL DEFAULT '',
+        embedding_base_url TEXT NOT NULL DEFAULT '',
         updated_at TEXT DEFAULT (datetime('now'))
       )
     `);
+    try { this.db.run("ALTER TABLE model_config ADD COLUMN embedding_model TEXT NOT NULL DEFAULT 'text-embedding-3-small'"); } catch {}
+    try { this.db.run("ALTER TABLE model_config ADD COLUMN embedding_api_key TEXT NOT NULL DEFAULT ''"); } catch {}
+    try { this.db.run("ALTER TABLE model_config ADD COLUMN embedding_base_url TEXT NOT NULL DEFAULT ''"); } catch {}
   }
 
   get(): ModelConfig | null {
@@ -56,14 +65,17 @@ export class ModelConfigStore {
       topP: row.top_p,
       frequencyPenalty: row.frequency_penalty,
       presencePenalty: row.presence_penalty,
+      embeddingModel: row.embedding_model,
+      embeddingApiKey: row.embedding_api_key,
+      embeddingBaseURL: row.embedding_base_url,
     };
   }
 
   save(config: ModelConfig): void {
     this.db.run(
       `INSERT OR REPLACE INTO model_config 
-        (id, model, api_key, base_url, temperature, max_tokens, top_p, frequency_penalty, presence_penalty) 
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, model, api_key, base_url, temperature, max_tokens, top_p, frequency_penalty, presence_penalty, embedding_model, embedding_api_key, embedding_base_url) 
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         config.model,
         config.apiKey,
@@ -73,6 +85,9 @@ export class ModelConfigStore {
         config.topP,
         config.frequencyPenalty,
         config.presencePenalty,
+        config.embeddingModel,
+        config.embeddingApiKey,
+        config.embeddingBaseURL,
       ]
     );
   }

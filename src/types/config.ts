@@ -25,5 +25,8 @@ export interface ModelConfig {
   topP: number;                // 0-1
   frequencyPenalty: number;    // -2.0-2.0
   presencePenalty: number;     // -2.0-2.0
+  embeddingModel: string;
+  embeddingApiKey: string;
+  embeddingBaseURL: string;
 }
 
