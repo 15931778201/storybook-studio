@@ -1,4 +1,5 @@
 import { SkillManager } from '../src/skills/skill-manager';
+import { SkillImporter } from '../src/skills/skill-importer';
 import { FileVectorStore } from '../src/vector/file-vector-store';
 import { ModelConfigStore } from '../src/storage/model-config-store';
 import { RoleStore } from '../src/storage/role-store';
@@ -15,6 +16,8 @@ import { setDefaultEmbeddingConfig } from '../src/vector/embeddings';
 export const vectorStore = new FileVectorStore('.agent/vectors.json');
 
 export const skillManager = new SkillManager('.agent/skills', vectorStore);
+
+export const skillImporter = new SkillImporter(skillManager);
 
 export const modelConfigStore = new ModelConfigStore('.agent/config.db');
 
