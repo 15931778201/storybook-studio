@@ -82,14 +82,41 @@ describe('file and command tools', () => {
     expect(fs.readFileSync(filePath, 'utf-8')).toBe('omega beta omega');
   });
 
-  it('BashTool executes a command without using a shell string', async () => {
+  it('BashTool executes a command with shell support (pipes, redirects, stderr)', async () => {
     const result = await new BashTool().execute({
-      command: process.execPath,
-      args: ['-e', "console.log('tool-ok')"],
+      command: `${process.execPath} -e "console.log('tool-ok')"`,
     });
 
     expect(result.success).toBe(true);
     expect(result.output.trim()).toBe('tool-ok');
+  });
+
+  it('BashTool supports legacy args array (backward compat)', async () => {
+    const result = await new BashTool().execute({
+      command: process.execPath,
+      args: ['-e', "console.log('args-ok')"],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.output.trim()).toBe('args-ok');
+  });
+
+  it('BashTool returns non-zero exit code in output (not a failure)', async () => {
+    const result = await new BashTool().execute({
+      command: 'sh -c "exit 42"',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('退出码 42');
+  });
+
+  it('BashTool supports pipes and redirects', async () => {
+    const result = await new BashTool().execute({
+      command: "echo 'hello world' | wc -w",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.output.trim()).toBe('2');
   });
 
   it('GrepTool returns matching file and line output', async () => {
