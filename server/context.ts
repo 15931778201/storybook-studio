@@ -46,14 +46,17 @@ export function initLogRotator(): void {
   }
 }
 
-export function initChangelogCron(): void {
-  const cronStore = new CronStore('.agent/cron.db');
-  const scheduler = new CronScheduler(cronStore);
+export async function initChangelogCron(): Promise<void> {
+  try {
+    const cronStore = new CronStore('.agent/cron.db');
+    const scheduler = new CronScheduler(cronStore);
 
-  cronStore.list().then((jobs) => {
+    await scheduler.start();
+
+    const jobs = await cronStore.list();
     const existing = jobs.find((j: any) => j.name === 'git-changelog-scan');
     if (!existing) {
-      cronStore.create({
+      const created = await cronStore.create({
         name: 'git-changelog-scan',
         description: 'Scan git log and create changelog entries for new commits',
         cronExpression: '*/30 * * * *',
@@ -61,14 +64,18 @@ export function initChangelogCron(): void {
 - feat/feature → requirement
 - fix/hotfix → bug
 - refactor/docs/chore/style/perf/test → optimization
+
 Skip other commits. For each matched commit, create a changelog entry with title=commit subject, trigger=git, commitHash=full SHA.
 
-Run: git log --oneline --after="<lastScanTime from DB>" --format="%H||%s"
-If lastScanTime is null, scan last 24 hours.`,
+IMPORTANT: Before scanning, call "ChangelogStore.getLastScanTime()" to get the last scan time. If it returns null, scan the last 24 hours.
+Run: git log --oneline --after="<lastScanTime>" --format="%H||%s"`,
         enabled: true,
       });
+      scheduler.scheduleJob(created);
     }
-  });
+  } catch (err) {
+    console.error('初始化变更日志定时任务失败:', err);
+  }
 }
 
 export function registerAdditionalRoutes(app: any) {

@@ -3,7 +3,7 @@ import app from './api';
 import { initLogRotator, initChangelogCron } from './context';
 
 initLogRotator();
-initChangelogCron();
+initChangelogCron().catch((err) => console.error('initChangelogCron failed:', err));
 
 const port = 3000;
 console.log(`🚀 Agent 服务已启动: http://localhost:${port}`);
