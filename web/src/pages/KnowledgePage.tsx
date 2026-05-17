@@ -249,18 +249,18 @@ export default function KnowledgePage() {
   const renderConfigPanel = () => (
     <div style={{ padding: '8px 0' }}>
       <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fff7e6', borderRadius: 6, fontSize: 12, color: '#d48806' }}>
-        调整分块参数影响检索效果。修改后需点击"重新索引"生效。Chunk Size 越大每个片段包含信息越多，Overlap 越大上下文连贯性越好，Keyword Weight 越高越侧重精确匹配。
+         调整分块参数影响检索效果。修改后需点击"重新索引"生效。分块大小越大每个片段包含信息越多，重叠越大上下文连贯性越好，关键词权重越高越侧重精确匹配。
       </div>
       <div style={{ marginBottom: 16 }}>
-        <Text strong>分块大小 (Chunk Size): {chunkSize}</Text>
+        <Text strong>分块大小: {chunkSize}</Text>
         <Slider min={200} max={4000} step={100} value={chunkSize} onChange={setChunkSize} />
       </div>
       <div style={{ marginBottom: 16 }}>
-        <Text strong>分块重叠 (Chunk Overlap): {chunkOverlap}</Text>
+        <Text strong>分块重叠: {chunkOverlap}</Text>
         <Slider min={0} max={1000} step={50} value={chunkOverlap} onChange={setChunkOverlap} />
       </div>
       <div style={{ marginBottom: 16 }}>
-        <Text strong>关键词权重 (Keyword Weight): {keywordWeight.toFixed(2)}</Text>
+        <Text strong>关键词权重: {keywordWeight.toFixed(2)}</Text>
         <Slider min={0} max={1} step={0.05} value={keywordWeight} onChange={setKeywordWeight} />
       </div>
       <Button type="primary" onClick={handleSaveConfig}>保存配置</Button>
@@ -322,8 +322,8 @@ export default function KnowledgePage() {
       {/* Left: KB List */}
       <div style={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <Space>
-          <Title level={4} style={{ margin: 0 }}>Knowledge Bases</Title>
-          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setShowCreate(true)}>New</Button>
+          <Title level={4} style={{ margin: 0 }}>知识库</Title>
+          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setShowCreate(true)}>新建</Button>
           <Button size="small" icon={<ReloadOutlined />} onClick={fetchKbList} loading={loading} />
         </Space>
         <div style={{ flex: 1, overflow: 'auto' }}>
@@ -341,7 +341,7 @@ export default function KnowledgePage() {
                 actions={[
                   <Button type="text" size="small" icon={<EditOutlined />}
                     onClick={(e) => { e.stopPropagation(); setRenameId(item.id); setRenameName(item.name); setShowRename(true); }} />,
-                  <Popconfirm title="Are you sure?" onConfirm={() => handleDelete(item.id)}>
+                  <Popconfirm title="确认删除？" onConfirm={() => handleDelete(item.id)}>
                     <Button type="text" size="small" danger icon={<DeleteOutlined />}
                       onClick={(e) => e.stopPropagation()} />
                   </Popconfirm>,
@@ -350,7 +350,7 @@ export default function KnowledgePage() {
                 <List.Item.Meta
                   avatar={<FolderOutlined style={{ fontSize: 20, color: '#1677ff' }} />}
                   title={item.name}
-                  description={`${item.docCount} files`}
+                  description={`${item.docCount} 个文件`}
                 />
               </List.Item>
             )}
@@ -364,8 +364,8 @@ export default function KnowledgePage() {
           <>
             <Space>
               <Title level={4} style={{ margin: 0 }}>{selectedKb.name}</Title>
-              <Button size="small" icon={<FileAddOutlined />} onClick={() => navigate(`/knowledge/${selectedKb.id}/new`)}>New File</Button>
-              <Button size="small" icon={<ReloadOutlined />} onClick={handleReindex} loading={indexing}>Reindex</Button>
+              <Button size="small" icon={<FileAddOutlined />} onClick={() => navigate(`/knowledge/${selectedKb.id}/new`)}>新建文件</Button>
+              <Button size="small" icon={<ReloadOutlined />} onClick={handleReindex} loading={indexing}>重新索引</Button>
             </Space>
             <Text type="secondary">{selectedKb.description}</Text>
 
@@ -377,49 +377,49 @@ export default function KnowledgePage() {
               accept=".md,.txt,.ts,.tsx,.js,.py,.java,.c,.cpp,.h,.go,.rs,.vue,.css,.html,.sh,.sql,.json,.xml,.yaml,.yml,.csv"
               onChange={(info) => {
                 if (info.file.status === 'done') {
-                  message.success(`${info.file.name} uploaded`);
+                  message.success(`${info.file.name} 上传成功`);
                   fetchFiles(selectedKb.id);
                   fetchKbList();
                 } else if (info.file.status === 'error') {
-                  message.error(`${info.file.name} upload failed`);
+                  message.error(`${info.file.name} 上传失败`);
                 }
               }}
               style={{ padding: 16 }}
             >
               <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Click or drag files to upload</p>
+              <p className="ant-upload-text">点击或拖拽文件上传</p>
             </Dragger>
 
             <Tabs
               activeKey={detailTab}
               onChange={handleTabChange}
               items={[
-                { key: 'files', label: 'Files', children: renderFileList() },
-                { key: 'search', label: <><SearchOutlined /> Search Test</>, children: renderSearchPanel() },
-                { key: 'config', label: <><SettingOutlined /> Config</>, children: renderConfigPanel() },
-                { key: 'graph', label: <><ShareAltOutlined /> Graph</>, children: <KnowledgeGraphView data={graphData} loading={graphLoading} /> },
+                { key: 'files', label: '文件', children: renderFileList() },
+                { key: 'search', label: <><SearchOutlined /> 检索测试</>, children: renderSearchPanel() },
+                { key: 'config', label: <><SettingOutlined /> 配置</>, children: renderConfigPanel() },
+                { key: 'graph', label: <><ShareAltOutlined /> 图谱</>, children: <KnowledgeGraphView data={graphData} loading={graphLoading} /> },
               ]}
             />
           </>
         ) : (
           <div style={{ textAlign: 'center', paddingTop: 80, opacity: 0.5 }}>
             <FolderOutlined style={{ fontSize: 48 }} />
-            <p>Select a knowledge base to view details</p>
+            <p>请选择一个知识库查看详情</p>
           </div>
         )}
       </div>
 
       {/* Create Modal */}
-      <Modal title="New Knowledge Base" open={showCreate} onOk={handleCreate} onCancel={() => setShowCreate(false)}>
+      <Modal title="新建知识库" open={showCreate} onOk={handleCreate} onCancel={() => setShowCreate(false)}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Input placeholder="Name" value={newName} onChange={e => setNewName(e.target.value)} />
-          <Input placeholder="Description (optional)" value={newDesc} onChange={e => setNewDesc(e.target.value)} />
+          <Input placeholder="名称" value={newName} onChange={e => setNewName(e.target.value)} />
+          <Input placeholder="描述（可选）" value={newDesc} onChange={e => setNewDesc(e.target.value)} />
         </div>
       </Modal>
 
       {/* Rename Modal */}
-      <Modal title="Rename" open={showRename} onOk={handleRename} onCancel={() => setShowRename(false)}>
-        <Input placeholder="New name" value={renameName} onChange={e => setRenameName(e.target.value)} />
+      <Modal title="重命名" open={showRename} onOk={handleRename} onCancel={() => setShowRename(false)}>
+        <Input placeholder="新名称" value={renameName} onChange={e => setRenameName(e.target.value)} />
       </Modal>
     </div>
   );

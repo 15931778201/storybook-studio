@@ -23,3 +23,13 @@ export interface ParsedSkill {
 }
 export interface SkillExecutionResult { success: boolean; skillName: string; stepsCompleted: number; stepsTotal: number; results: any[]; summary: string; }
 export interface StepResult { stepId: string; order: number; tool: string; success: boolean; output: string; error?: string; }
+
+export type ImportSourceType = 'github' | 'clawhub' | 'direct' | 'unknown';
+
+export interface ImportResult {
+  name: string;
+  title: string;
+  success: boolean;
+  overwritten: boolean;
+  error?: string;
+}

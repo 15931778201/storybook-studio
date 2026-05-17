@@ -38,7 +38,7 @@ export default function FileViewPage() {
         setEditContent(data.content || '');
         setIsMarkdown(data.isMarkdown || false);
       })
-      .catch(() => message.error('Failed to load file'))
+      .catch(() => message.error('加载文件失败'))
       .finally(() => setLoading(false));
   }, [kbId, fileName]);
 
@@ -71,16 +71,16 @@ export default function FileViewPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        message.error(err.error || 'Save failed');
+        message.error(err.error || '保存失败');
         setSaving(false);
         return;
       }
       setContent(editContent);
       setEditing(false);
       setChunks([]);
-      message.success('File saved');
+      message.success('文件已保存');
     } catch {
-      message.error('Save failed');
+      message.error('保存失败');
     }
     setSaving(false);
   };
@@ -101,13 +101,13 @@ export default function FileViewPage() {
   return (
     <div style={{ padding: 24, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/knowledge')}>Back</Button>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/knowledge')}>返回</Button>
         <Title level={4} style={{ margin: 0, flex: 1 }}>{fileName}</Title>
         {!editing && (
           <Segmented
             options={[
-              { value: 'preview', icon: <FileTextOutlined /> },
-              { value: 'chunks', icon: <ApartmentOutlined /> },
+              { value: 'preview', icon: <FileTextOutlined />, label: '预览' },
+              { value: 'chunks', icon: <ApartmentOutlined />, label: '分块' },
             ]}
             value={viewMode}
             onChange={handleViewModeChange}
@@ -115,17 +115,18 @@ export default function FileViewPage() {
         )}
         {editing ? (
           <Space>
-            <Button icon={<CloseOutlined />} onClick={handleCancel}>Cancel</Button>
-            <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>Save</Button>
+            <Button icon={<CloseOutlined />} onClick={handleCancel}>取消</Button>
+            <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>保存</Button>
           </Space>
         ) : (
-          <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>Edit</Button>
+          <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑</Button>
         )}
       </div>
 
       {editing ? (
         <div style={{ flex: 1, display: 'flex', gap: 12, overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <Text style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>编辑区 — 支持 Markdown 语法，右侧实时预览</Text>
             <TextArea
               value={editContent}
               onChange={e => setEditContent(e.target.value)}
@@ -134,6 +135,7 @@ export default function FileViewPage() {
           </div>
           {isMarkdown && (
             <div style={{ flex: 1, overflow: 'auto', borderLeft: '1px solid #e8e8e8', paddingLeft: 12 }}>
+              <Text style={{ fontSize: 12, color: '#888', marginBottom: 4, display: 'block' }}>实时预览</Text>
               <div style={{ maxWidth: 860 }}>
                 <XMarkdown
                   content={editContent}
@@ -159,7 +161,7 @@ export default function FileViewPage() {
           {chunksLoading ? (
             <div style={{ textAlign: 'center', paddingTop: 40 }}><Spin /></div>
           ) : chunks.length === 0 ? (
-            <Text type="secondary">No chunks available</Text>
+            <Text type="secondary">暂无分块数据</Text>
           ) : (
             chunks.map((chunk, idx) => (
               <div key={idx} style={{
@@ -172,8 +174,8 @@ export default function FileViewPage() {
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   padding: '4px 12px', background: '#fafafa', borderBottom: '1px solid #e8e8e8',
                 }}>
-                  <Text strong style={{ fontSize: 13 }}>Chunk #{chunk.index}</Text>
-                  <Tag>{chunk.charCount} chars</Tag>
+                  <Text strong style={{ fontSize: 13 }}>分块 #{chunk.index}</Text>
+                  <Tag>{chunk.charCount} 字符</Tag>
                 </div>
                 <pre style={{
                   margin: 0, padding: 12, fontSize: 13, fontFamily: 'monospace',

@@ -6,7 +6,7 @@ import { XMarkdown } from '@ant-design/x-markdown';
 import CodeBlock from '../components/CodeBlock';
 
 const { TextArea } = Input;
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 export default function NewKnowledgeFilePage() {
   const { kbId } = useParams<{ kbId: string }>();
@@ -19,7 +19,7 @@ export default function NewKnowledgeFilePage() {
 
   const handleSave = async () => {
     if (!fileName.trim()) {
-      message.error('File name is required');
+      message.error('文件名不能为空');
       return;
     }
     setSaving(true);
@@ -31,14 +31,14 @@ export default function NewKnowledgeFilePage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        message.error(err.error || 'Save failed');
+        message.error(err.error || '保存失败');
         setSaving(false);
         return;
       }
-      message.success('File saved');
+      message.success('文件已保存');
       navigate('/knowledge');
     } catch {
-      message.error('Save failed');
+      message.error('保存失败');
       setSaving(false);
     }
   };
@@ -46,31 +46,36 @@ export default function NewKnowledgeFilePage() {
   return (
     <div style={{ padding: 24, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/knowledge')}>Back</Button>
-        <Title level={4} style={{ margin: 0, flex: 1 }}>New File</Title>
-        <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>Save</Button>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/knowledge')}>返回</Button>
+        <Title level={4} style={{ margin: 0, flex: 1 }}>新建文件</Title>
+        <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>保存</Button>
       </div>
       <div style={{ marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
         <Input
-          placeholder="File name"
+          placeholder="文件名"
           value={fileName}
           onChange={e => setFileName(e.target.value)}
           style={{ fontFamily: 'monospace', flex: 1 }}
-          addonBefore="Filename"
+          addonBefore="文件名"
         />
         {isMarkdown && (
           <Button
             icon={preview ? <EditOutlined /> : <EyeOutlined />}
             onClick={() => setPreview(p => !p)}
           >
-            {preview ? 'Editor Only' : 'Preview'}
+            {preview ? '仅编辑器' : '预览'}
           </Button>
         )}
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <Text style={{ fontSize: 12, color: '#888' }}>
+          支持 Markdown 语法，右侧实时预览。代码块使用 ``` 包裹，可指定语言实现语法高亮（如 ```tsx），mermaid 图表使用 ```mermaid 绘制流程图、时序图等。
+        </Text>
       </div>
       <div style={{ flex: 1, display: 'flex', gap: 12, overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: preview && isMarkdown ? '40%' : '100%' }}>
           <TextArea
-            placeholder="Paste or type content here..."
+            placeholder="在此输入或粘贴内容..."
             value={content}
             onChange={e => setContent(e.target.value)}
             style={{ flex: 1, fontFamily: 'monospace', fontSize: 14, resize: 'none' }}
