@@ -10,12 +10,23 @@ import { LogRotator } from '../src/utils/log-rotator';
 import { ChangelogStore } from '../src/changelog/changelog-store';
 import { CronStore } from '../src/cron/cron-store';
 import { CronScheduler } from '../src/cron/cron-scheduler';
+import { setDefaultEmbeddingConfig } from '../src/vector/embeddings';
 
 export const vectorStore = new FileVectorStore('.agent/vectors.json');
 
 export const skillManager = new SkillManager('.agent/skills', vectorStore);
 
 export const modelConfigStore = new ModelConfigStore('.agent/config.db');
+
+// 从存储的配置中读取嵌入配置作为默认值
+const storedConfig = modelConfigStore.get();
+if (storedConfig) {
+  setDefaultEmbeddingConfig({
+    model: storedConfig.embeddingModel,
+    apiKey: storedConfig.embeddingApiKey,
+    baseURL: storedConfig.embeddingBaseURL,
+  });
+}
 
 export const roleStore = new RoleStore('.agent/roles.db');
 
