@@ -12,6 +12,7 @@ import MarketPage from './pages/MarketPage';
 import SettingsPage from './pages/SettingsPage';
 import KnowledgePage from './pages/KnowledgePage';
 import NewKnowledgeFilePage from './pages/NewKnowledgeFilePage';
+import FileViewPage from './pages/FileViewPage';
 import RoleManagementPage from './pages/RoleManagementPage';
 import './App.css';
 import CronPage from './pages/CronPage';
@@ -82,6 +83,7 @@ function AppInner() {
             <Route path="/market" element={<MarketPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/knowledge/:kbId/new" element={<NewKnowledgeFilePage />} />
+            <Route path="/knowledge/:kbId/files/:fileName" element={<FileViewPage />} />
             <Route path="/knowledge" element={<KnowledgePage />} />
             <Route path="/roles" element={<RoleManagementPage />} />
             <Route path="/cron" element={<CronPage />} />

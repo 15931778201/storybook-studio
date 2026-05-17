@@ -200,9 +200,11 @@ export default function KnowledgePage() {
               locale={{ emptyText: 'No files' }}
               renderItem={file => (
                 <List.Item
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/knowledge/${selectedKb!.id}/files/${encodeURIComponent(file.name)}`)}
                   actions={[
-                    <Popconfirm title="Delete this file?" onConfirm={() => handleDeleteFile(file.name)}>
-                      <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                    <Popconfirm title="Delete this file?" onConfirm={(e) => { e?.stopPropagation(); handleDeleteFile(file.name); }}>
+                      <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={e => e.stopPropagation()} />
                     </Popconfirm>,
                   ]}
                 >
