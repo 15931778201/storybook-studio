@@ -1,4 +1,3 @@
-// server/context.ts
 import { SkillManager } from '../src/skills/skill-manager';
 import { FileVectorStore } from '../src/vector/file-vector-store';
 import { ModelConfigStore } from '../src/storage/model-config-store';
@@ -7,35 +6,72 @@ import { KnowledgeBaseManager } from '../src/rag/knowledge-manager';
 import { MCPClient } from '../src/mcp/mcp-client';
 import { ApiKeyStore } from '../src/security/key-store';
 import { logBus } from '../src/observability/log-bus';
+import { LogRotator } from '../src/utils/log-rotator';
+import { ChangelogStore } from '../src/changelog/changelog-store';
+import { CronStore } from '../src/cron/cron-store';
+import { CronScheduler } from '../src/cron/cron-scheduler';
 
-// 向量存储
 export const vectorStore = new FileVectorStore('.agent/vectors.json');
 
-// 技能管理器
 export const skillManager = new SkillManager('.agent/skills', vectorStore);
 
-// 模型配置
 export const modelConfigStore = new ModelConfigStore('.agent/config.db');
 
-// 角色管理
 export const roleStore = new RoleStore('.agent/roles.db');
 
-// 知识库管理器
 export const knowledgeBaseManager = new KnowledgeBaseManager('.agent/knowledge', {
   chunkSize: 1500,
   chunkOverlap: 200,
   keywordWeight: 0.3,
 });
 
-// MCP 客户端（按需初始化连接）
 export const mcpClient = new MCPClient();
-// 如有需要，可在此处连接默认服务器
 
-// Agent 会话存储（保留会话实例，用于 SSE 恢复等）
 export const sessions = new Map<string, any>();
 
+export const logRotator = new LogRotator();
+
+export const changelogStore = new ChangelogStore();
+
+let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+export function initLogRotator(): void {
+  (globalThis as any).__logRotator = logRotator;
+  logRotator.cleanOldLogs();
+
+  if (!cleanupInterval) {
+    cleanupInterval = setInterval(() => {
+      logRotator.cleanOldLogs().catch(() => {});
+    }, 3600000);
+  }
+}
+
+export function initChangelogCron(): void {
+  const cronStore = new CronStore('.agent/cron.db');
+  const scheduler = new CronScheduler(cronStore);
+
+  cronStore.list().then((jobs) => {
+    const existing = jobs.find((j: any) => j.name === 'git-changelog-scan');
+    if (!existing) {
+      cronStore.create({
+        name: 'git-changelog-scan',
+        description: 'Scan git log and create changelog entries for new commits',
+        cronExpression: '*/30 * * * *',
+        prompt: `Scan git log for new commits since last scan and create changelog entries. Parse commit messages:
+- feat/feature → requirement
+- fix/hotfix → bug
+- refactor/docs/chore/style/perf/test → optimization
+Skip other commits. For each matched commit, create a changelog entry with title=commit subject, trigger=git, commitHash=full SHA.
+
+Run: git log --oneline --after="<lastScanTime from DB>" --format="%H||%s"
+If lastScanTime is null, scan last 24 hours.`,
+        enabled: true,
+      });
+    }
+  });
+}
+
 export function registerAdditionalRoutes(app: any) {
-  // ========== API Key 管理 ==========
   const keyStore = new ApiKeyStore('.agent/apikeys.db');
   app.get('/api/keys', (c: any) => c.json(keyStore.list()));
   app.post('/api/keys', async (c: any) => {
@@ -46,7 +82,6 @@ export function registerAdditionalRoutes(app: any) {
   });
   app.delete('/api/keys/:id', (c: any) => { keyStore.delete(c.req.param('id')); return c.json({ success: true }); });
 
-  // ========== 实时日志流 ==========
   app.get('/api/logs/stream', (c: any) => {
     const stream = new ReadableStream({
       start(controller: any) {
