@@ -290,6 +290,21 @@ export class SkillManager {
     return true;
   }
 
+  importSkill(rawContent: string, overwrite: boolean = false): ParsedSkill | null {
+    const parsed = this.parseSkillContent(rawContent);
+    if (!parsed) return null;
+
+    const filePath = path.join(this.skillsDir, `${parsed.metadata.name}.md`);
+    const exists = fs.existsSync(filePath);
+
+    if (exists && !overwrite) return null;
+
+    fs.writeFileSync(filePath, rawContent, 'utf-8');
+    this.metaCache.set(parsed.metadata.name, parsed.metadata);
+    this.indexed = false;
+    return parsed;
+  }
+
   updateSkill(name: string, updates: Partial<SkillMetadata> & { steps?: SkillStep[] }): ParsedSkill | null {
     const skill = this.loadFullSkill(name);
     if (!skill) return null;
