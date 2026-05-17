@@ -51,6 +51,42 @@ knowledge.get('/:id/files', (c) => {
   }
 });
 
+knowledge.get('/:id/files/:fileName', (c) => {
+  const id = c.req.param('id');
+  const fileName = c.req.param('fileName');
+  try {
+    const kb = knowledgeBaseManager.getKB(id);
+    const filePath = path.join(process.cwd(), '.agent', 'knowledge', id, 'docs', fileName);
+    if (!fs.existsSync(filePath)) return c.json({ error: 'File not found' }, 404);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const isMarkdown = fileName.endsWith('.md');
+    return c.json({ content, isMarkdown });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404);
+  }
+});
+
+knowledge.put('/:id/files/:fileName', async (c) => {
+  const id = c.req.param('id');
+  const fileName = c.req.param('fileName');
+  const { content } = await c.req.json();
+  try {
+    const kb = knowledgeBaseManager.getKB(id);
+    const filePath = path.join(process.cwd(), '.agent', 'knowledge', id, 'docs', fileName);
+    if (!fs.existsSync(filePath)) return c.json({ error: 'File not found' }, 404);
+    fs.writeFileSync(filePath, content || '', 'utf-8');
+    try {
+      await knowledgeBaseManager.indexOne(id);
+    } catch (e: any) {
+      console.error('Index failed:', e);
+      return c.json({ success: true, warning: 'File saved but index failed' });
+    }
+    return c.json({ success: true, message: `File ${fileName} updated` });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404);
+  }
+});
+
 knowledge.post('/:id/files', async (c) => {
   const id = c.req.param('id');
   const { fileName, content } = await c.req.json();
