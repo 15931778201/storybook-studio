@@ -19,7 +19,8 @@ interface ChangelogEntry {
   type: string;
   title: string;
   description?: string;
-  triggerMethod?: string;
+  trigger: string;
+  commitHash?: string;
   createdAt: string;
 }
 
@@ -39,7 +40,7 @@ export default function ChangelogPage() {
       if (t) params.set('type', t);
       const res = await fetch(`/api/changelog?${params}`);
       const data = await res.json();
-      setEntries(data.entries ?? data.data ?? []);
+      setEntries(data.items ?? []);
       setTotal(data.total ?? 0);
     } catch { message.error('加载失败'); }
     setLoading(false);
@@ -86,7 +87,7 @@ export default function ChangelogPage() {
     { title: '标题', dataIndex: 'title', key: 'title' },
     { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
     {
-      title: '触发方式', dataIndex: 'triggerMethod', key: 'triggerMethod', width: 100,
+      title: '触发方式', dataIndex: 'trigger', key: 'trigger', width: 100,
       render: (v?: string) => v ? TRIGGER_LABELS[v] ?? v : '-',
     },
     {
