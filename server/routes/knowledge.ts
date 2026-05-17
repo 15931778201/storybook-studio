@@ -51,6 +51,26 @@ knowledge.get('/:id/files', (c) => {
   }
 });
 
+knowledge.post('/:id/files', async (c) => {
+  const id = c.req.param('id');
+  const { fileName, content } = await c.req.json();
+  if (!fileName || !fileName.trim()) return c.json({ error: 'fileName is required' }, 400);
+  try {
+    const kb = knowledgeBaseManager.getKB(id);
+    const filePath = path.join(process.cwd(), '.agent', 'knowledge', id, 'docs', fileName);
+    fs.writeFileSync(filePath, content || '', 'utf-8');
+    try {
+      await knowledgeBaseManager.indexOne(id);
+    } catch (e: any) {
+      console.error('Index failed:', e);
+      return c.json({ success: true, warning: 'File saved but index failed' });
+    }
+    return c.json({ success: true, message: `File ${fileName} created` });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404);
+  }
+});
+
 knowledge.post('/:id/upload', async (c) => {
   const id = c.req.param('id');
   const formData = await c.req.formData();

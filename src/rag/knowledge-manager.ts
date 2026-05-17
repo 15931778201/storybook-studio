@@ -1,4 +1,4 @@
-import { KnowledgeBase } from './knowledge-base';
+import { KnowledgeBase, KnowledgeBaseConfig } from './knowledge-base';
 import fs from 'fs';
 import path from 'path';
 
@@ -14,10 +14,12 @@ export class KnowledgeBaseManager {
   private baseDir: string;
   private configPath: string;
   private instances: Map<string, KnowledgeBase> = new Map();
+  private kbConfig: KnowledgeBaseConfig;
 
-  constructor(baseDir: string = '.agent/knowledge') {
+  constructor(baseDir: string = '.agent/knowledge', kbConfig: KnowledgeBaseConfig = {}) {
     this.baseDir = path.resolve(baseDir);
     this.configPath = path.join(this.baseDir, 'config.json');
+    this.kbConfig = kbConfig;
     fs.mkdirSync(this.baseDir, { recursive: true });
     this.migrateLegacy();
   }
@@ -32,7 +34,7 @@ export class KnowledgeBaseManager {
       const cfg = configs.find(c => c.id === id);
       if (!cfg) throw new Error(`Knowledge base ${id} not found`);
       const kbDir = this.kbDir(id);
-      this.instances.set(id, new KnowledgeBase(id, path.join(kbDir, 'docs'), path.join(kbDir, 'vectors.json')));
+      this.instances.set(id, new KnowledgeBase(id, path.join(kbDir, 'docs'), path.join(kbDir, 'vectors.json'), this.kbConfig));
     }
     return this.instances.get(id)!;
   }

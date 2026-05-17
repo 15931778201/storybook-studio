@@ -2,6 +2,7 @@
 import { SkillManager } from '../src/skills/skill-manager';
 import { FileVectorStore } from '../src/vector/file-vector-store';
 import { ModelConfigStore } from '../src/storage/model-config-store';
+import { RoleStore } from '../src/storage/role-store';
 import { KnowledgeBaseManager } from '../src/rag/knowledge-manager';
 import { MCPClient } from '../src/mcp/mcp-client';
 import { ApiKeyStore } from '../src/security/key-store';
@@ -16,8 +17,15 @@ export const skillManager = new SkillManager('.agent/skills', vectorStore);
 // 模型配置
 export const modelConfigStore = new ModelConfigStore('.agent/config.db');
 
+// 角色管理
+export const roleStore = new RoleStore('.agent/roles.db');
+
 // 知识库管理器
-export const knowledgeBaseManager = new KnowledgeBaseManager();
+export const knowledgeBaseManager = new KnowledgeBaseManager('.agent/knowledge', {
+  chunkSize: 1500,
+  chunkOverlap: 200,
+  keywordWeight: 0.3,
+});
 
 // MCP 客户端（按需初始化连接）
 export const mcpClient = new MCPClient();
