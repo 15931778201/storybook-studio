@@ -38,7 +38,10 @@ import { statics } from './routes/static';
 import { market } from './routes/market';
 import { knowledge } from './routes/knowledge';
 import { cron } from './routes/cron';
+import { changelog } from './routes/changelog';
 import { agent } from './routes/agents';
+import { roles } from './routes/roles';
+import { logs } from './routes/logs';
 import { imRouter, registerAdapter } from './im/gateway';
 import { WeComAdapter } from '../src/im/wecom-adapter';
 import { DingTalkAdapter } from '../src/im/dingtalk-adapter';
@@ -97,8 +100,11 @@ app.route('/api/memory', memory);
 app.route('/api/knowledge', knowledge);
 app.route('/api/market', market);
 app.route('/api/cron', cron);
+app.route('/api/changelog', changelog);
 app.route('/im', imRouter);
 app.route('/api/agents', agent);
+app.route('/api/roles', roles);
+app.route('/api/logs', logs);
 registerAdditionalRoutes(app);
 
 // 图片上传
