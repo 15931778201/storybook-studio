@@ -44,7 +44,9 @@ export default function ModelSettings({ onConfigChange }: { onConfigChange?: (co
 
   const handleSave = () => {
     form.validateFields().then((values) => {
+      const current = loadModelConfig();
       const newConfig: ModelConfig = {
+        ...current,
         model: values.model,
         apiKey: values.apiKey,
         baseURL: values.baseURL,
