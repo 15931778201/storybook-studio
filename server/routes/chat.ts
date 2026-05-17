@@ -251,12 +251,12 @@ chat.get('/stream/:sessionId', async (c) => {
             const type = /修复|bug|fix|hotfix|漏洞/.test(userInput) ? 'bug'
               : /优化|refactor|重构|提升|perf/.test(userInput) ? 'optimization'
               : 'requirement';
-            changelogStore.create({
+            changelogStore?.create({
               type,
               title: userInput.slice(0, 80),
               description: final.slice(0, 200),
               trigger: 'agent',
-            }).catch(() => {});
+            }).catch((e: any) => console.warn('changelog auto-record failed:', e));
           }
         })
         .catch((err: Error) => send({ type: 'error', content: err.message }))
