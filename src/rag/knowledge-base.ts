@@ -1,42 +1,90 @@
 import { FileVectorStore } from '../vector/file-vector-store';
 import { VectorDocument } from '../vector/vector-store';
 import { generateEmbeddings, generateSingleEmbedding } from '../vector/embeddings';
+import { RecursiveTextSplitter, TextSplitterConfig } from './text-splitter';
+import { KeywordIndex } from './keyword-index';
 import fs from 'fs';
 import path from 'path';
 
+export interface KnowledgeBaseConfig {
+  chunkSize?: number;
+  chunkOverlap?: number;
+  keywordWeight?: number;
+}
+
 export class KnowledgeBase {
   private vectorStore: FileVectorStore;
+  private keywordIndex: KeywordIndex;
+  private splitter: RecursiveTextSplitter;
   private docsDir: string;
   private kbId: string;
+  private keywordWeight: number;
+  private keywordIndexPath: string;
 
-  constructor(kbId: string, docsDir: string, vectorPath: string) {
+  constructor(kbId: string, docsDir: string, vectorPath: string, config: KnowledgeBaseConfig = {}) {
     this.kbId = kbId;
     this.docsDir = path.resolve(docsDir);
     this.vectorStore = new FileVectorStore(vectorPath);
+    this.keywordIndexPath = vectorPath.replace(/\.json$/, '-keywords.json');
+    this.keywordIndex = new KeywordIndex(this.keywordIndexPath);
+    this.splitter = new RecursiveTextSplitter({
+      chunkSize: config.chunkSize ?? 1500,
+      chunkOverlap: config.chunkOverlap ?? 200,
+    });
+    this.keywordWeight = config.keywordWeight ?? 0.3;
     fs.mkdirSync(this.docsDir, { recursive: true });
   }
 
-  async indexDocuments(): Promise<void> {
+  async indexDocuments(clearFirst: boolean = true): Promise<void> {
+    if (clearFirst) {
+      this.keywordIndex.clear();
+    }
     const files = this.getAllFiles(this.docsDir);
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf-8');
-      const chunks = this.splitText(content, 500);
+      const chunks = this.splitter.splitText(content);
       const docs: VectorDocument[] = chunks.map((chunk, i) => ({
         id: `${file}_chunk_${i}`,
         content: chunk,
         metadata: { source: file, chunk: i },
       }));
-      const embeddings = await generateEmbeddings(chunks);
+      const texts = chunks;
+      const embeddings = await generateEmbeddings(texts);
       await this.vectorStore.addDocuments(docs, embeddings);
+      for (const doc of docs) {
+        this.keywordIndex.addDocument(doc.id, doc.content);
+      }
     }
+    this.keywordIndex.persist();
     console.log(`知识库 [${this.kbId}] 索引完成: ${files.length} 个文件`);
   }
 
   async retrieve(query: string, topK: number = 3): Promise<string> {
     const queryEmbedding = await generateSingleEmbedding(query);
-    const results = await this.vectorStore.similaritySearch(queryEmbedding, topK);
-    if (results.length === 0) return '';
-    const snippets = results.map(r => `[来源: ${r.metadata.source}] ${r.content}`);
+    const vectorResults = await this.vectorStore.similaritySearch(queryEmbedding, topK * 2);
+
+    const keywordScores = this.keywordIndex.search(query);
+
+    const merged = new Map<string, { doc: VectorDocument; vectorScore: number; keywordScore: number }>();
+    for (const doc of vectorResults) {
+      merged.set(doc.id, { doc, vectorScore: 1, keywordScore: 0 });
+    }
+    for (const [chunkId, score] of keywordScores) {
+      if (merged.has(chunkId)) {
+        merged.get(chunkId)!.keywordScore = score;
+      }
+    }
+
+    const kwMax = Math.max(...Array.from(keywordScores.values()), 1);
+    const results = Array.from(merged.values()).map(({ doc, vectorScore, keywordScore }) => ({
+      doc,
+      score: (1 - this.keywordWeight) * vectorScore + this.keywordWeight * (keywordScore / kwMax),
+    }));
+    results.sort((a, b) => b.score - a.score);
+
+    const final = results.slice(0, topK);
+    if (final.length === 0) return '';
+    const snippets = final.map(r => `[来源: ${r.doc.metadata.source}] ${r.doc.content}`);
     return `相关知识库内容：\n${snippets.join('\n\n')}`;
   }
 
@@ -86,13 +134,5 @@ export class KnowledgeBase {
       }
     }
     return results;
-  }
-
-  private splitText(text: string, chunkSize: number): string[] {
-    const chunks: string[] = [];
-    for (let i = 0; i < text.length; i += chunkSize) {
-      chunks.push(text.slice(i, i + chunkSize));
-    }
-    return chunks;
   }
 }
