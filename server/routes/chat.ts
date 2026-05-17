@@ -130,7 +130,7 @@ import {
   ReadFileTool, WriteFileTool, BashTool, GrepTool,
   SkillCallerTool, ListSkillsTool, CreateSkillTool,
 } from '../../src';
-import { skillManager, modelConfigStore, knowledgeBaseManager, mcpClient, roleStore } from '../context';
+import { skillManager, modelConfigStore, knowledgeBaseManager, mcpClient, roleStore, changelogStore } from '../context';
 import fs from 'fs';
 
 const chat = new Hono();
@@ -245,7 +245,20 @@ chat.get('/stream/:sessionId', async (c) => {
       eventBus.on(`message-${sessionId}`, msgHandler);
 
       agent.run(userInput)
-        .then((final: string) => send({ type: 'final', content: final }))
+        .then((final: string) => {
+          send({ type: 'final', content: final });
+          if (final && final.length > 10 && !final.startsWith('⚠️')) {
+            const type = /修复|bug|fix|hotfix|漏洞/.test(userInput) ? 'bug'
+              : /优化|refactor|重构|提升|perf/.test(userInput) ? 'optimization'
+              : 'requirement';
+            changelogStore.create({
+              type,
+              title: userInput.slice(0, 80),
+              description: final.slice(0, 200),
+              trigger: 'agent',
+            }).catch(() => {});
+          }
+        })
         .catch((err: Error) => send({ type: 'error', content: err.message }))
         .finally(() => {
           eventBus.off('confirm-request', confirmHandler);
