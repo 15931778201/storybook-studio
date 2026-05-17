@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, ConfigProvider, theme as antTheme, Button, Tooltip, Space, Menu } from 'antd';
-import { SunOutlined, MoonOutlined, MessageOutlined, AppstoreOutlined, ShoppingOutlined, SettingOutlined, BookOutlined, ClockCircleOutlined, UserOutlined } from '@ant-design/icons';
+import { SunOutlined, MoonOutlined, MessageOutlined, AppstoreOutlined, ShoppingOutlined, SettingOutlined, BookOutlined, ClockCircleOutlined, UserOutlined, FileTextOutlined, DiffOutlined } from '@ant-design/icons';
 import { XProvider } from '@ant-design/x';
 import { ChatProvider, useChatContext } from './providers/ChatProvider';
 
@@ -16,6 +16,8 @@ import FileViewPage from './pages/FileViewPage';
 import RoleManagementPage from './pages/RoleManagementPage';
 import './App.css';
 import CronPage from './pages/CronPage';
+import LogsPage from './pages/LogsPage';
+import ChangelogPage from './pages/ChangelogPage';
 
 const { Sider, Content, Header } = Layout;
 
@@ -41,6 +43,8 @@ function AppInner() {
     { key: '/knowledge', icon: <BookOutlined />, label: '知识库' },
     { key: '/roles', icon: <UserOutlined />, label: '角色' },
     { key: '/cron', icon: <ClockCircleOutlined />, label: '定时任务' },
+    { key: '/logs', icon: <FileTextOutlined />, label: '日志' },
+    { key: '/changelog', icon: <DiffOutlined />, label: '变更日志' },
     { key: '/settings', icon: <SettingOutlined />, label: '设置' },
   ];
 
@@ -87,6 +91,8 @@ function AppInner() {
             <Route path="/knowledge" element={<KnowledgePage />} />
             <Route path="/roles" element={<RoleManagementPage />} />
             <Route path="/cron" element={<CronPage />} />
+            <Route path="/logs" element={<LogsPage />} />
+            <Route path="/changelog" element={<ChangelogPage />} />
           </Routes>
         </Content>
       </Layout>

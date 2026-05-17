@@ -115,3 +115,82 @@
   background: #1e1e1e;
   color: #eee;
 }
+
+/* 可折叠思考面板 */
+.collapsible-thinking {
+  margin-top: 8px;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.thinking-header:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.dark .thinking-header:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.thinking-header .thinking-toggle {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.thinking-steps {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.thinking-steps.expanded {
+  max-height: 2000px;
+}
+
+.thinking-step-item {
+  padding: 8px;
+  margin-top: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.thinking-step-item:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.dark .thinking-step-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.thinking-step-item.running {
+  border-color: #1677ff;
+}
+
+.dark .thinking-step-item.running {
+  border-color: #4096ff;
+}
+
+.thinking-step-item .step-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.thinking-step-item .step-args,
+.thinking-step-item .step-result {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

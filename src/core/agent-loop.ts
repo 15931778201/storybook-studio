@@ -1,5 +1,5 @@
 // src/core/agent-loop.ts
-import { DefaultStepPipeline } from './default-step-pipeline';
+import { AdaptivePipeline } from './adaptive-pipeline';
 import type { AgentConfig } from '../types/config';
 import type { Message } from '../types/message';
 import type { StepPipeline } from './step-pipeline';
@@ -13,7 +13,7 @@ export class AgentLoop {
     private sessionId: string = 'default',
     pipeline?: StepPipeline
   ) {
-    this.pipeline = pipeline || new DefaultStepPipeline(config, sessionId, (config as any).modelConfigStore);
+    this.pipeline = pipeline || new AdaptivePipeline(config, sessionId, (config as any).modelConfigStore);
     this.maxIterations = config.maxIterations;
   }
 

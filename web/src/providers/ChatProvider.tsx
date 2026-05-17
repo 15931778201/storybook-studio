@@ -41,7 +41,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([
     { id: 'default', name: '默认工作区', projectPath: '.', knowledgeBaseIds: [] },
   ]);
-  const [activeRole, setActiveRole] = useState<any | null>(null);
+  const [activeRole, setActiveRole] = useState<any | null>(() => {
+    const saved = localStorage.getItem('activeRoleId');
+    return saved ? { id: saved } : { id: 'programmer', name: '全栈程序猿' };
+  });
+
+  const handleSetActiveRole = useCallback((role: any | null) => {
+    setActiveRole(role);
+    if (role?.id) {
+      localStorage.setItem('activeRoleId', role.id);
+    } else {
+      localStorage.removeItem('activeRoleId');
+    }
+  }, []);
 
   const [messageStore, setMessageStore] = useState<Record<string, ChatMessage[]>>({});
   const currentKey = `${activeWorkspaceId}:${activeConversationId}`;
@@ -136,6 +148,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const activeWs = workspaces.find(w => w.id === activeWorkspaceId);
       if (activeWs?.knowledgeBaseIds?.length) {
         params.append('kbIds', activeWs.knowledgeBaseIds.join(','));
+      }
+
+      if (activeRole) {
+        params.append('roleId', activeRole.id);
       }
 
       const url = `/api/stream/${activeConversationId}?${params.toString()}`;
@@ -323,7 +339,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setActiveWorkspaceId,
         addWorkspace,
         activeRole,
-        setActiveRole,
+        setActiveRole: handleSetActiveRole,
         conversationTitles,
         updateConversationTitle,
       }}

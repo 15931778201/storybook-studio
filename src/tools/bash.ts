@@ -1,24 +1,24 @@
 // src/tools/bash.ts
 import { z } from 'zod';
 import { safeExecute, Tool, ToolResult } from '../core/tool';
-import { execFile } from 'child_process';
+import { exec } from 'child_process';
 import { promisify } from 'util';
-const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec) as (command: string, options?: { shell?: boolean | string; timeout?: number; maxBuffer?: number }) => Promise<{ stdout: string; stderr: string }>;
+
+function shellQuote(arg: string): string {
+  if (/^[\w@%+,:;!~.\/=-]+$/.test(arg)) return arg;
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
 
 export class BashTool extends Tool {
   name = 'bash';
-  description = '执行 Shell 命令（安全，防注入）';
+  description = '执行 Shell 命令（支持管道、重定向、变量）';
   parameters = z.object({
-    command: z.string(),
-    args: z.preprocess(
-      (val) => (typeof val === 'string' ? val.split(' ').filter(Boolean) : val),
-      z.array(z.string()).optional().default([])
-    ),
-    // ✅ 核心修复：timeout 无论如何都会得到一个合法值
+    command: z.string().describe('要执行的命令（推荐直接写完整 shell 命令，如 "ls -la | grep foo"）'),
+    args: z.array(z.string()).optional().default([]).describe('命令参数（可选，会自动追加到 command 后）'),
     timeout: z.preprocess(
       (val) => {
         const num = Number(val);
-        // 如果转换失败、值为 0、负数或超大，都用默认 30000
         if (isNaN(num) || num < 1000) return 30000;
         if (num > 2_147_483_647) return 2_147_483_647;
         return num;
@@ -31,16 +31,34 @@ export class BashTool extends Tool {
     const { command, args = [], timeout } = validatedParams as z.infer<typeof this.parameters>;
     const safeInternal = Math.min(Math.max(Number(timeout) || 30_000, 1000), 2_147_483_647);
 
+    const cmd = args.length > 0
+      ? `${command} ${args.map(shellQuote).join(' ')}`
+      : command;
+
     return safeExecute(
       this.name,
       async () => {
-        const { stdout, stderr } = await execFileAsync(command, args, {
-          timeout: safeInternal,
-          maxBuffer: 5 * 1024 * 1024,
-        });
-        return { success: true, output: stdout + (stderr ? `\n[STDERR] ${stderr}` : '') };
+        try {
+          const { stdout, stderr } = await execAsync(cmd, {
+            shell: true,
+            timeout: safeInternal,
+            maxBuffer: 5 * 1024 * 1024,
+          });
+          const output = stdout + (stderr ? `\n[STDERR] ${stderr}` : '');
+          return { success: true, output };
+        } catch (error: any) {
+          const partialStdout = error.stdout || '';
+          const partialStderr = error.stderr || '';
+          let output = partialStdout + (partialStderr ? `\n[STDERR] ${partialStderr}` : '');
+          if (error.killed) {
+            output += `\n⚠️ 命令超时 (${safeInternal}ms)`;
+          } else {
+            output += `\n[退出码 ${error.code}]`;
+          }
+          return { success: true, output };
+        }
       },
-      { timeout: safeInternal + 5000, maxOutput: 4000 }
+      { timeout: safeInternal + 5000, maxOutput: 10000 }
     );
   }
 }

@@ -83,13 +83,13 @@ export function buildModelErrorMessage(err: any): string {
 }
 
 export class DefaultStepPipeline extends StepPipeline {
-  private eventBus = AgentEventBus.getInstance();
-  private modelConfigStore: ModelConfigStore | null;
-  private skillManager: any;
-  private knowledgeBase: any;
+  protected eventBus = AgentEventBus.getInstance();
+  protected modelConfigStore: ModelConfigStore | null;
+  protected skillManager: any;
+  protected knowledgeBase: any;
   // 性能优化相关
-  private retrievalCache: Map<string, string> = new Map();
-  private lastToolCalls: Map<string, { args: string; output: string }> = new Map();
+  protected retrievalCache: Map<string, string> = new Map();
+  protected lastToolCalls: Map<string, { args: string; output: string }> = new Map();
 
   constructor(
     config: AgentConfig,
@@ -102,7 +102,7 @@ export class DefaultStepPipeline extends StepPipeline {
     this.knowledgeBase = (config as any).knowledgeBase || null;
   }
   // 如果消息中包含图片，构建 Vision 格式
-  private buildVisionMessages(messages: Message[]): any[] {
+  protected buildVisionMessages(messages: Message[]): any[] {
     return messages.map(msg => {
       if (msg.role === 'user' && msg.imageBase64) {
         return {
@@ -195,7 +195,7 @@ export class DefaultStepPipeline extends StepPipeline {
         };
         messages.push({
           role: 'assistant',
-          content: assistantMsg.content.replace(/\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/, '').trim(),
+          content: assistantMsg.content.replace(/\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/g, '').trim(),
           tool_calls: [fakeToolCall],
         });
         const shouldStop = await this.executeSingleToolCall(fakeToolCall, messages);
@@ -245,7 +245,7 @@ export class DefaultStepPipeline extends StepPipeline {
   }
 
   // --- 角色注入（保留原实现）---
-  private injectRole(messages: Message[], role: RoleProfile | null): Message[] {
+  protected injectRole(messages: Message[], role: RoleProfile | null): Message[] {
     if (!role) return messages;
     const rolePrompt = [
       `【当前角色】${role.title}（${role.name}）`,
@@ -268,7 +268,7 @@ export class DefaultStepPipeline extends StepPipeline {
   }
 
   // --- 上下文准备（优化：并行获取技能和知识，加入缓存）---
-  private async prepareContext(messages: Message[], userInput: string): Promise<Message[]> {
+  protected async prepareContext(messages: Message[], userInput: string): Promise<Message[]> {
     // 压缩历史
     const memories = await this.config.memory.getAll();
     messages = await this.config.contextMgr.compress(messages);
@@ -304,7 +304,7 @@ export class DefaultStepPipeline extends StepPipeline {
   
 
   // --- 缓存检索结果，避免同一会话重复调用 ---
-  private async getCachedOrFetch(
+  protected async getCachedOrFetch(
     cacheKey: string,
     fetcher: () => Promise<string>
   ): Promise<string> {
@@ -320,7 +320,7 @@ export class DefaultStepPipeline extends StepPipeline {
   }
 
   // --- 收集所有工具（内置 + MCP）---
-  private collectAllTools(): any[] {
+  protected collectAllTools(): any[] {
     let tools = [...this.config.tools];
     const mcpClient = (this.config as any).mcpClient;
     if (mcpClient) {
@@ -333,7 +333,7 @@ export class DefaultStepPipeline extends StepPipeline {
   }
 
   // --- 模型调用（使用 this.config 中的模型配置）---
-  private async callModel(messages: Message[], toolsDef: any[]) {
+  protected async callModel(messages: Message[], toolsDef: any[]) {
     console.log(`📡 模型: ${this.config.model}, baseURL: ${this.config.baseURL}, tools: ${toolsDef.length}个, messages: ${messages.length}条`);
 
     const openai = new OpenAI({
@@ -373,6 +373,8 @@ export class DefaultStepPipeline extends StepPipeline {
 
       let fullContent = '';
       const toolCallsMap: Map<number, { id: string; function: { name: string; arguments: string } }> = new Map();
+      let inToolCall = false;
+      let toolCallBuffer = '';
 
       let finishReason = '';
       for await (const chunk of stream as any as AsyncIterable<any>) {
@@ -383,13 +385,47 @@ export class DefaultStepPipeline extends StepPipeline {
           finishReason = choice.finish_reason;
         }
 
-        // 流式推送文本内容
+        // 过滤 [TOOL_CALL]...[/TOOL_CALL] 标记，不推送到前端
         if (delta?.content) {
-          fullContent += delta.content;
-          this.eventBus.emit(`message-${this.sessionId}`, {
-            type: 'stream',
-            content: delta.content,
-          });
+          let text = delta.content;
+          // 处理跨 chunk 的 [TOOL_CALL] 标记
+          if (inToolCall) {
+            toolCallBuffer += text;
+            const endIdx = toolCallBuffer.indexOf('[/TOOL_CALL]');
+            if (endIdx !== -1) {
+              inToolCall = false;
+              const cleanText = toolCallBuffer.slice(endIdx + '[/TOOL_CALL]'.length);
+              toolCallBuffer = '';
+              if (cleanText) {
+                fullContent += cleanText;
+                this.eventBus.emit(`message-${this.sessionId}`, { type: 'stream', content: cleanText });
+              }
+            }
+          } else {
+            const startIdx = text.indexOf('[TOOL_CALL]');
+            if (startIdx !== -1) {
+              const beforeTag = text.slice(0, startIdx);
+              if (beforeTag) {
+                fullContent += beforeTag;
+                this.eventBus.emit(`message-${this.sessionId}`, { type: 'stream', content: beforeTag });
+              }
+              const afterStart = text.slice(startIdx);
+              const endIdx = afterStart.indexOf('[/TOOL_CALL]');
+              if (endIdx !== -1) {
+                const afterTag = afterStart.slice(endIdx + '[/TOOL_CALL]'.length);
+                if (afterTag) {
+                  fullContent += afterTag;
+                  this.eventBus.emit(`message-${this.sessionId}`, { type: 'stream', content: afterTag });
+                }
+              } else {
+                inToolCall = true;
+                toolCallBuffer = afterStart;
+              }
+            } else {
+              fullContent += text;
+              this.eventBus.emit(`message-${this.sessionId}`, { type: 'stream', content: text });
+            }
+          }
         }
 
         // 收集工具调用（流式拼接）
@@ -442,13 +478,19 @@ export class DefaultStepPipeline extends StepPipeline {
         const messagesWithTools = this.injectTextToolInstructions(baseParams.messages, toolsDef);
         const fallbackParams: any = { ...baseParams, messages: messagesWithTools };
         delete fallbackParams.stream;
-        return await openai.chat.completions.create(fallbackParams);
+        const fallbackResponse = await openai.chat.completions.create(fallbackParams);
+        // 清理回复中的 [TOOL_CALL] 标记
+        const stripped = (fallbackResponse.choices?.[0]?.message?.content || '').replace(/\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/g, '').trim();
+        if (stripped) {
+          fallbackResponse.choices[0].message.content = stripped;
+        }
+        return fallbackResponse;
       }
       throw err;
     }
   }
 
-  private injectTextToolInstructions(messages: any[], toolsDef: any[]): any[] {
+  protected injectTextToolInstructions(messages: any[], toolsDef: any[]): any[] {
     const toolDesc = toolsDef
       .map((t: any) => `${t.function.name}: ${t.function.description}\n参数 JSON Schema: ${JSON.stringify(t.function.parameters)}`)
       .join('\n\n');
@@ -463,7 +505,7 @@ export class DefaultStepPipeline extends StepPipeline {
   }
 
   // --- 工具调用解析 ---
-  private parseToolCalls(rawCalls: any[]): ToolCall[] {
+  protected parseToolCalls(rawCalls: any[]): ToolCall[] {
     return rawCalls.map((tc: any) => {
       const fn = tc.function ?? { name: 'unknown', arguments: '{}' };
       return {
@@ -477,7 +519,7 @@ export class DefaultStepPipeline extends StepPipeline {
   /**
    * 执行单个工具调用，返回 true 表示应该提前终止循环（例如检测到重复调用或信息足够）
    */
-  private async executeSingleToolCall(tc: ToolCall, messages: Message[]): Promise<boolean> {
+  protected async executeSingleToolCall(tc: ToolCall, messages: Message[]): Promise<boolean> {
     let args: any;
     try {
       args = JSON.parse(tc.function.arguments);
@@ -620,11 +662,11 @@ export class DefaultStepPipeline extends StepPipeline {
     }
   }
 
-  private addToolMessage(messages: Message[], toolCallId: string, content: string) {
+  protected addToolMessage(messages: Message[], toolCallId: string, content: string) {
     messages.push({ role: 'tool', content, tool_call_id: toolCallId } as any);
   }
 
-  private waitForConfirmation(request: ConfirmRequest): Promise<boolean> {
+  protected waitForConfirmation(request: ConfirmRequest): Promise<boolean> {
     const CONFIRM_TIMEOUT = 30000;
     return new Promise((resolve) => {
       const timeoutHandle = setTimeout(() => {

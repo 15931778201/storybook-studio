@@ -9,7 +9,6 @@ import {
 } from '@ant-design/icons';
 import { useChatContext } from '../providers/ChatProvider';
 import RoleSelector from '../components/RoleSelector';
-import { BUILTIN_ROLES } from '../data/roles';
 
 const { Sider, Content, Header } = Layout;
 

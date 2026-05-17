@@ -21,7 +21,7 @@ export default function Sidebar() {
     setKeys(prev => prev.filter(k => k !== key));
     if (key === activeConversationId) {
       const remaining = keys.filter(k => k !== key);
-      if (remaining.length > 0) setActiveConversationId(remaining[0].key);
+      if (remaining.length > 0) setActiveConversationId(remaining[0]);
     }
   }, [activeConversationId, keys, setActiveConversationId]);
 

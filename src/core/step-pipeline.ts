@@ -9,6 +9,19 @@ export interface StepResult {
   finalOutput?: string;
 }
 
+export interface PlanStep {
+  stepId: number;
+  description: string;
+  tool: string;
+  args: Record<string, any>;
+  dependsOn?: number[];
+}
+
+export interface AgentPlan {
+  goal: string;
+  steps: PlanStep[];
+}
+
 export abstract class StepPipeline {
   protected config: AgentConfig;
   protected sessionId: string;

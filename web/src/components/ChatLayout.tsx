@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Bubble, Sender } from '@ant-design/x';
 import { XMarkdown } from '@ant-design/x-markdown';
-import { Button, Tooltip, message, Space } from 'antd';
-import { CopyOutlined, RedoOutlined, StopOutlined, EditOutlined, ExportOutlined } from '@ant-design/icons';
+import { Button, Tooltip, message, Space, Modal } from 'antd';
+import { CopyOutlined, RedoOutlined, EditOutlined, ExportOutlined } from '@ant-design/icons';
 import { useChatContext } from '../providers/ChatProvider';
 import type { ChatMessage } from '../types/messages';
 import TaskPlanView from './TaskPlanView';
@@ -12,10 +12,8 @@ import DiffEditor from './DiffEditor';
 import CodeBlock from './CodeBlock';
 import EmptyState from './EmptyState';
 import ImageUpload from './ImageUpload';
-import ThinkingPanel from './ThinkingPanel';
+import CollapsibleThinkingPanel from './CollapsibleThinkingPanel';
 import { getBubbleRole, getMessagePlacement, shouldRenderMessage } from '../utils/chat-presentation';
-
-const ConfirmDialog = lazy(() => import('./ConfirmDialog'));
 
 export default function ChatLayout() {
   const { messages, sendMessage, isRequesting, abort } = useChatContext();
@@ -32,6 +30,19 @@ export default function ChatLayout() {
     [sendMessage, imageBase64]
   );
 
+  const handleCancel = useCallback(() => {
+    Modal.confirm({
+      title: '停止生成',
+      content: '正在生成中，是否停止？停止后可重新输入发送。',
+      okText: '停止',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => {
+        abort();
+      },
+    });
+  }, [abort]);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
@@ -45,7 +56,13 @@ export default function ChatLayout() {
 
     switch (msg.contentType) {
       case 'plan':
-        return <TaskPlanView goal={msg.metadata?.goal || ''} steps={msg.metadata?.steps || []} />;
+        return (
+          <TaskPlanView
+            goal={msg.metadata?.goal || ''}
+            steps={msg.metadata?.steps || []}
+            replanReason={msg.metadata?.replanReason}
+          />
+        );
 
       case 'decision':
         return (
@@ -88,12 +105,7 @@ export default function ChatLayout() {
               }}
             />
             {steps.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-                  🛠 执行过程 ({steps.length} 步)
-                </div>
-                <ThinkingPanel steps={steps} />
-              </div>
+              <CollapsibleThinkingPanel steps={steps} isRequesting={isRequesting} />
             )}
           </div>
         );
@@ -194,13 +206,9 @@ export default function ChatLayout() {
             loading={isRequesting}
             placeholder="输入任务… (Enter 发送)"
             onSubmit={handleSubmit}
+            onCancel={handleCancel}
           />
         </div>
-        {isRequesting && (
-          <Tooltip title="停止生成">
-            <Button danger icon={<StopOutlined />} onClick={abort} size="large" />
-          </Tooltip>
-        )}
       </div>
     </div>
   );

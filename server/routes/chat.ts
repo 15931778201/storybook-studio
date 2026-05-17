@@ -130,7 +130,7 @@ import {
   ReadFileTool, WriteFileTool, BashTool, GrepTool,
   SkillCallerTool, ListSkillsTool, CreateSkillTool,
 } from '../../src';
-import { skillManager, modelConfigStore, knowledgeBaseManager, mcpClient } from '../context';
+import { skillManager, modelConfigStore, knowledgeBaseManager, mcpClient, roleStore } from '../context';
 import fs from 'fs';
 
 const chat = new Hono();
@@ -163,8 +163,13 @@ export function createAgent(sessionId: string, config: any): AgentLoop {
   return agentSessions.get(sessionId)!;
 }
 
-function buildAgentConfig(sessionId: string, kbIds: string[] = []): any {
+function buildAgentConfig(sessionId: string, kbIds: string[] = [], roleId?: string): any {
   const stored = modelConfigStore.get() || {} as any;
+
+  let roleProfile = null;
+  if (roleId) {
+    roleProfile = roleStore.get(roleId) || null;
+  }
 
   return {
     model: stored.model || process.env.OPENAI_MODEL || 'gpt-4o',
@@ -187,6 +192,7 @@ function buildAgentConfig(sessionId: string, kbIds: string[] = []): any {
       : null,
     mcpClient,
     modelConfigStore,
+    roleProfile,
   };
 }
 
@@ -197,7 +203,8 @@ chat.get('/stream/:sessionId', async (c) => {
   if (!userInput) return c.text('Missing input', 400);
 
   const kbIds = c.req.query('kbIds')?.split(',').filter(Boolean) || [];
-  const config = buildAgentConfig(sessionId, kbIds);
+  const roleId = c.req.query('roleId') || undefined;
+  const config = buildAgentConfig(sessionId, kbIds, roleId);
 
   // 图片引用：从临时文件读取 base64
   const imageRef = c.req.query('imageRef');

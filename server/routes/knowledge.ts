@@ -154,6 +154,64 @@ knowledge.post('/:id/reindex', async (c) => {
   }
 });
 
+knowledge.get('/:id/config', (c) => {
+  const id = c.req.param('id');
+  try {
+    const kb = knowledgeBaseManager.getKB(id);
+    return c.json(kb.getConfig());
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404);
+  }
+});
+
+knowledge.put('/:id/config', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  try {
+    const kb = knowledgeBaseManager.getKB(id);
+    kb.setConfig(body);
+    return c.json({ success: true });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404);
+  }
+});
+
+knowledge.post('/:id/search', async (c) => {
+  const id = c.req.param('id');
+  const { query, topK = 5 } = await c.req.json();
+  if (!query) return c.json({ error: 'Query is required' }, 400);
+  try {
+    const kb = knowledgeBaseManager.getKB(id);
+    const results = await kb.retrieveWithScores(query, topK);
+    return c.json({ results });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+knowledge.get('/:id/files/:fileName/chunks', (c) => {
+  const id = c.req.param('id');
+  const fileName = c.req.param('fileName');
+  try {
+    const kb = knowledgeBaseManager.getKB(id);
+    const chunks = kb.getFileChunks(fileName);
+    return c.json({ chunks });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404);
+  }
+});
+
+knowledge.get('/:id/graph', (c) => {
+  const id = c.req.param('id');
+  try {
+    const kb = knowledgeBaseManager.getKB(id);
+    const graph = (kb as any).getGraph();
+    return c.json(graph.getGraphData());
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404);
+  }
+});
+
 knowledge.get('/:id/status', (c) => {
   const id = c.req.param('id');
   try {

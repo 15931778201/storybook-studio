@@ -19,13 +19,19 @@ const STOP_WORDS = new Set([
 
 const TOKENIZE_REGEX = /[a-zA-Z0-9_\u4e00-\u9fff]+/g;
 
-interface InvertedIndexEntry {
-  ids: string[];
+interface SerializedIndex {
+  entries: Record<string, Record<string, number>>;
+  docLengths: Record<string, number>;
+  totalDocs: number;
 }
 
 export class KeywordIndex {
-  private index: Map<string, InvertedIndexEntry> = new Map();
+  private index: Map<string, Map<string, number>> = new Map();
+  private docLengths: Map<string, number> = new Map();
+  private totalDocs: number = 0;
   private storagePath: string;
+  private static readonly K1 = 1.5;
+  private static readonly B = 0.75;
 
   constructor(storagePath: string) {
     this.storagePath = path.resolve(storagePath);
@@ -34,64 +40,81 @@ export class KeywordIndex {
 
   addDocument(id: string, content: string): void {
     const tokens = this.tokenize(content);
-    const seen = new Set<string>();
+    const tf = new Map<string, number>();
     for (const token of tokens) {
-      if (seen.has(token)) continue;
-      seen.add(token);
+      tf.set(token, (tf.get(token) || 0) + 1);
+    }
+    for (const [token, count] of tf) {
       let entry = this.index.get(token);
       if (!entry) {
-        entry = { ids: [] };
+        entry = new Map();
         this.index.set(token, entry);
       }
-      if (!entry.ids.includes(id)) {
-        entry.ids.push(id);
-      }
+      entry.set(id, (entry.get(id) || 0) + count);
     }
+    this.docLengths.set(id, tokens.length);
+    this.totalDocs++;
   }
 
   removeDocument(id: string): void {
     for (const [, entry] of this.index) {
-      entry.ids = entry.ids.filter(x => x !== id);
+      entry.delete(id);
     }
     for (const [key, entry] of this.index) {
-      if (entry.ids.length === 0) this.index.delete(key);
+      if (entry.size === 0) this.index.delete(key);
     }
+    this.docLengths.delete(id);
+    this.totalDocs = Math.max(0, this.totalDocs - 1);
   }
 
   search(query: string): Map<string, number> {
     const tokens = this.tokenize(query);
     const scores = new Map<string, number>();
+    const avgDocLen = this.totalDocs > 0
+      ? Array.from(this.docLengths.values()).reduce((a, b) => a + b, 0) / this.totalDocs
+      : 1;
+    const N = this.totalDocs;
+
     for (const token of tokens) {
       const entry = this.index.get(token);
       if (!entry) continue;
-      for (const id of entry.ids) {
-        scores.set(id, (scores.get(id) || 0) + 1);
+      const n = entry.size;
+      const idf = N > 0 ? Math.log((N - n + 0.5) / (n + 0.5) + 1) : 0;
+
+      for (const [docId, tf] of entry) {
+        const docLen = this.docLengths.get(docId) || avgDocLen;
+        const bm25Score = idf * (tf * (KeywordIndex.K1 + 1)) / (tf + KeywordIndex.K1 * (1 - KeywordIndex.B + KeywordIndex.B * docLen / avgDocLen));
+        scores.set(docId, (scores.get(docId) || 0) + bm25Score);
       }
     }
     return scores;
   }
 
+  entries(): IterableIterator<[string, Map<string, number>]> {
+    return this.index.entries();
+  }
+
   docCount(): number {
-    const docIds = new Set<string>();
-    for (const [, entry] of this.index) {
-      for (const id of entry.ids) {
-        docIds.add(id);
-      }
-    }
-    return docIds.size;
+    return this.totalDocs;
   }
 
   persist(): void {
     fs.mkdirSync(path.dirname(this.storagePath), { recursive: true });
-    const obj: Record<string, string[]> = {};
-    for (const [key, entry] of this.index) {
-      obj[key] = entry.ids;
+    const obj: SerializedIndex = {
+      entries: {},
+      docLengths: Object.fromEntries(this.docLengths),
+      totalDocs: this.totalDocs,
+    };
+    for (const [key, docMap] of this.index) {
+      obj.entries[key] = Object.fromEntries(docMap);
     }
     fs.writeFileSync(this.storagePath, JSON.stringify(obj), 'utf-8');
   }
 
   clear(): void {
     this.index.clear();
+    this.docLengths.clear();
+    this.totalDocs = 0;
     if (fs.existsSync(this.storagePath)) {
       fs.unlinkSync(this.storagePath);
     }
@@ -100,12 +123,16 @@ export class KeywordIndex {
   private load(): void {
     if (!fs.existsSync(this.storagePath)) return;
     try {
-      const obj = JSON.parse(fs.readFileSync(this.storagePath, 'utf-8'));
-      for (const [key, ids] of Object.entries(obj)) {
-        this.index.set(key, { ids: ids as string[] });
+      const obj: SerializedIndex = JSON.parse(fs.readFileSync(this.storagePath, 'utf-8'));
+      this.docLengths = new Map(Object.entries(obj.docLengths || {}));
+      this.totalDocs = obj.totalDocs || 0;
+      for (const [key, docMap] of Object.entries(obj.entries || {})) {
+        this.index.set(key, new Map(Object.entries(docMap)));
       }
     } catch {
       this.index.clear();
+      this.docLengths.clear();
+      this.totalDocs = 0;
     }
   }
 

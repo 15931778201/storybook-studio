@@ -14,6 +14,11 @@ export class RecursiveTextSplitter {
     this.chunkOverlap = config.chunkOverlap ?? 200;
   }
 
+  getChunkSize(): number { return this.chunkSize; }
+  getChunkOverlap(): number { return this.chunkOverlap; }
+  setChunkSize(size: number): void { this.chunkSize = size; }
+  setChunkOverlap(overlap: number): void { this.chunkOverlap = overlap; }
+
   splitText(text: string): string[] {
     const segments = this.extractProtectedSegments(text);
     const chunks: string[] = [];
