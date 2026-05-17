@@ -1,17 +1,18 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, ConfigProvider, theme as antTheme, Button, Tooltip, Space, Menu } from 'antd';
-import { SunOutlined, MoonOutlined, MessageOutlined, AppstoreOutlined, ShoppingOutlined, SettingOutlined, BookOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { SunOutlined, MoonOutlined, MessageOutlined, AppstoreOutlined, ShoppingOutlined, SettingOutlined, BookOutlined, ClockCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { XProvider } from '@ant-design/x';
 import { ChatProvider, useChatContext } from './providers/ChatProvider';
-import Sidebar from './components/Sidebar';
-import WorkspaceTabs from './components/WorkspaceTabs';
+
 import RoleSelector from './components/RoleSelector';
 import ChatPage from './pages/ChatPage';
 import SkillsPage from './pages/SkillsPage';
 import MarketPage from './pages/MarketPage';
 import SettingsPage from './pages/SettingsPage';
 import KnowledgePage from './pages/KnowledgePage';
+import NewKnowledgeFilePage from './pages/NewKnowledgeFilePage';
+import RoleManagementPage from './pages/RoleManagementPage';
 import './App.css';
 import CronPage from './pages/CronPage';
 
@@ -19,7 +20,7 @@ const { Sider, Content, Header } = Layout;
 
 function AppInner() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768);
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, addWorkspace, activeRole, setActiveRole } = useChatContext();
+  const { activeRole, setActiveRole } = useChatContext();
   const { token } = antTheme.useToken();
   const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
   const navigate = useNavigate();
@@ -37,6 +38,7 @@ function AppInner() {
     { key: '/skills', icon: <AppstoreOutlined />, label: '技能' },
     { key: '/market', icon: <ShoppingOutlined />, label: '市场' },
     { key: '/knowledge', icon: <BookOutlined />, label: '知识库' },
+    { key: '/roles', icon: <UserOutlined />, label: '角色' },
     { key: '/cron', icon: <ClockCircleOutlined />, label: '定时任务' },
     { key: '/settings', icon: <SettingOutlined />, label: '设置' },
   ];
@@ -55,19 +57,16 @@ function AppInner() {
             onClick={({ key }) => navigate(key)}
             style={{ background: 'transparent', borderRight: 0, marginTop: 8 }}
           />
-          <div style={{ flex: 1, overflow: 'auto', borderTop: `1px solid ${token.colorBorderSecondary}`, marginTop: 8, padding: '8px 0' }}>
-            <Sidebar />
-          </div>
+
         </Sider>
       )}
 
       <Layout>
         <Header style={{ background: token.colorBgContainer, borderBottom: `1px solid ${token.colorBorderSecondary}`, display: 'flex', alignItems: 'center', padding: '0 16px', height: 56 }}>
           <Button type="text" onClick={() => setSidebarOpen(!sidebarOpen)} style={{ fontSize: 18, marginRight: 12 }}>☰</Button>
+          <div style={{ flex: 1 }} />
           <h3 style={{ margin: 0, minWidth: 100 }}>AgentKit</h3>
-          <div style={{ flex: 1, overflow: 'hidden', alignItems: 'center'}}>
-            <WorkspaceTabs />
-          </div>
+          <div style={{ flex: 1 }} />
           <Space style={{ marginLeft: 16 }}>
             <RoleSelector activeRole={activeRole} onSelectRole={setActiveRole} />
             <Tooltip title={isDark ? '切换亮色模式' : '切换暗色模式'}>
@@ -82,7 +81,9 @@ function AppInner() {
             <Route path="/skills" element={<SkillsPage />} />
             <Route path="/market" element={<MarketPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/knowledge/:kbId/new" element={<NewKnowledgeFilePage />} />
             <Route path="/knowledge" element={<KnowledgePage />} />
+            <Route path="/roles" element={<RoleManagementPage />} />
             <Route path="/cron" element={<CronPage />} />
           </Routes>
         </Content>

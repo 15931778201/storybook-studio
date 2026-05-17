@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, Typography, Button, Modal, Input, message, List, Upload, Space, Popconfirm, Spin } from 'antd';
-import { PlusOutlined, DeleteOutlined, ReloadOutlined, InboxOutlined, EditOutlined, FolderOutlined, FileOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, ReloadOutlined, InboxOutlined, EditOutlined, FolderOutlined, FileOutlined, FileAddOutlined } from '@ant-design/icons';
 
 const { Dragger } = Upload;
 const { Title, Text } = Typography;
@@ -20,6 +21,7 @@ interface FileItem {
 }
 
 export default function KnowledgePage() {
+  const navigate = useNavigate();
   const [kbList, setKbList] = useState<KBItem[]>([]);
   const [selectedKb, setSelectedKb] = useState<KBItem | null>(null);
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -166,6 +168,7 @@ export default function KnowledgePage() {
           <>
             <Space>
               <Title level={4} style={{ margin: 0 }}>{selectedKb.name}</Title>
+              <Button size="small" icon={<FileAddOutlined />} onClick={() => navigate(`/knowledge/${selectedKb.id}/new`)}>New File</Button>
               <Button size="small" icon={<ReloadOutlined />} onClick={handleReindex} loading={indexing}>Reindex</Button>
             </Space>
             <Text type="secondary">{selectedKb.description}</Text>
