@@ -125,6 +125,34 @@ app.post('/api/upload/image', async (c) => {
   return c.json({ success: true, dataUri: `data:image/jpeg;base64,${base64}`, tempPath });
 });
 
+// 清理临时文件的函数
+function cleanupTempFiles() {
+  const tempDir = path.join(process.cwd(), '.agent/temp');
+  if (!fs.existsSync(tempDir)) {
+    return;
+  }
+  
+  const files = fs.readdirSync(tempDir);
+  const oneHourAgo = Date.now() - 60 * 60 * 1000; // 1小时前的时间戳
+  
+  files.forEach(file => {
+    const filePath = path.join(tempDir, file);
+    try {
+      const stat = fs.statSync(filePath);
+      // 如果文件名是数字（时间戳）且文件创建时间超过1小时，则删除
+      if (/^\d+\.jpg$/.test(file) && stat.birthtimeMs < oneHourAgo) {
+        fs.unlinkSync(filePath);
+        console.log(`🧹 清理临时文件: ${filePath}`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ 处理文件失败: ${filePath}`, error);
+    }
+  });
+}
+
+// 应用启动时清理临时文件
+cleanupTempFiles();
+
 app.get('/health', (c) => c.json({ status: 'ok', uptime: process.uptime() }));
 app.route('/', statics);
 export default app;

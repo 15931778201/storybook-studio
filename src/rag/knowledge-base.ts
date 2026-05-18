@@ -48,7 +48,9 @@ export class KnowledgeBase {
       chunkOverlap: config.chunkOverlap ?? 200,
     });
     this.keywordWeight = config.keywordWeight ?? 0.3;
-    this.cache = new EmbeddingCache(path.join(this.vectorsDir, 'embedding-cache.sqlite'));
+    // Get the correct embedding model configuration
+    const embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
+    this.cache = new EmbeddingCache(path.join(this.vectorsDir, 'embedding-cache.sqlite'), embeddingModel);
     this.graph = new KnowledgeGraph(path.join(this.vectorsDir, 'knowledge-graph.json'));
     fs.mkdirSync(this.docsDir, { recursive: true });
   }

@@ -281,12 +281,12 @@ export class DefaultStepPipeline extends StepPipeline {
     messages = [{ role: 'system', content: fullSystemPrompt }, ...messages];
     // 并行获取技能和知识，并缓存结果
     const [skillCtx, ragCtx] = await Promise.all([
-      this.getCachedOrFetch('skill', () =>
+      this.getCachedOrFetch('skill', userInput, () =>
         this.skillManager
           ? withTimeout(this.skillManager.searchRelevantSkills(userInput, 2), 1500, '')
           : Promise.resolve('')
       ),
-      this.getCachedOrFetch('rag', () =>
+      this.getCachedOrFetch('rag', userInput, () =>
         this.knowledgeBase
           ? withTimeout(this.knowledgeBase.retrieve(userInput, 2), 1500, '')
           : Promise.resolve('')
@@ -306,17 +306,32 @@ export class DefaultStepPipeline extends StepPipeline {
   // --- 缓存检索结果，避免同一会话重复调用 ---
   protected async getCachedOrFetch(
     cacheKey: string,
+    userInput: string,
     fetcher: () => Promise<string>
   ): Promise<string> {
-    const cached = this.retrievalCache.get(cacheKey);
+    // 使用用户输入的哈希值作为缓存键的一部分，确保不同问题有不同的缓存
+    const inputHash = this.hashString(userInput);
+    const fullCacheKey = `${cacheKey}:${inputHash}`;
+    const cached = this.retrievalCache.get(fullCacheKey);
     if (cached !== undefined) return cached;
     try {
       const result = await fetcher();
-      this.retrievalCache.set(cacheKey, result);
+      this.retrievalCache.set(fullCacheKey, result);
       return result;
     } catch {
       return '';
     }
+  }
+
+  // --- 简单的字符串哈希函数 ---
+  protected hashString(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 转换为32位整数
+    }
+    return hash.toString();
   }
 
   // --- 收集所有工具（内置 + MCP）---

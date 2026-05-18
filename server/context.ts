@@ -12,6 +12,7 @@ import { ChangelogStore } from '../src/changelog/changelog-store';
 import { CronStore } from '../src/cron/cron-store';
 import { CronScheduler } from '../src/cron/cron-scheduler';
 import { setDefaultEmbeddingConfig } from '../src/vector/embeddings';
+import type { CronJob } from '../src/types/cron';
 
 export const vectorStore = new FileVectorStore('.agent/vectors.json');
 
@@ -49,6 +50,126 @@ export const changelogStore = new ChangelogStore();
 
 let cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
+// 新增：处理 changelog cron 任务的实际执行逻辑
+async function executeChangelogCron(job: CronJob): Promise<void> {
+  if (job.name !== 'git-changelog-scan') {
+    return;
+  }
+
+  try {
+    console.log('🔍 开始执行 Git 变更日志扫描...');
+    
+    // 获取上次扫描时间
+    const lastScanTime = await changelogStore.getLastScanTime();
+    let afterTime: string;
+    
+    if (lastScanTime) {
+      afterTime = lastScanTime;
+    } else {
+      // 如果没有上次扫描时间，扫描过去24小时
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      afterTime = twentyFourHoursAgo.toISOString();
+    }
+
+    // 执行 git log 命令
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    
+    const format = '%H||%s'; // commit hash || subject
+    const args = ['log', '--oneline', `--after=${afterTime}`, `--format=${format}`];
+    
+    let stdout: string;
+    try {
+      const result = await execFileAsync('git', args, {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024 * 5,
+        cwd: process.cwd(),
+      });
+      stdout = result.stdout;
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        console.warn('⚠️ 未找到 git 命令，跳过变更日志扫描');
+        return;
+      }
+      if (error.message?.includes('not a git repository')) {
+        console.warn('⚠️ 当前目录不是 git 仓库，跳过变更日志扫描');
+        return;
+      }
+      throw error;
+    }
+
+    if (!stdout.trim()) {
+      console.log('✅ Git 扫描完成，无新提交');
+      await changelogStore.updateScanTime();
+      return;
+    }
+
+    // 解析 commit 日志
+    const lines = stdout.trim().split('\n').filter(line => line.trim());
+    const entriesToCreate: Array<{
+      type: string;
+      title: string;
+      trigger: string;
+      commitHash: string;
+    }> = [];
+
+    for (const line of lines) {
+      const parts = line.split('||');
+      if (parts.length !== 2) continue;
+      
+      const commitHash = parts[0].trim();
+      const subject = parts[1].trim();
+      
+      if (!commitHash || !subject) continue;
+      
+      // 根据 commit message 判断类型
+      let type = 'optimization'; // 默认类型
+      
+      const lowerSubject = subject.toLowerCase();
+      if (lowerSubject.includes('feat') || lowerSubject.includes('feature') || 
+          lowerSubject.includes('需求') || lowerSubject.includes('add') || 
+          lowerSubject.includes('新增')) {
+        type = 'requirement';
+      } else if (lowerSubject.includes('fix') || lowerSubject.includes('hotfix') || 
+                 lowerSubject.includes('bug') || lowerSubject.includes('修复') || 
+                 lowerSubject.includes('error') || lowerSubject.includes('issue')) {
+        type = 'bug';
+      } else if (lowerSubject.includes('refactor') || lowerSubject.includes('docs') || 
+                 lowerSubject.includes('chore') || lowerSubject.includes('style') || 
+                 lowerSubject.includes('perf') || lowerSubject.includes('test') ||
+                 lowerSubject.includes('优化') || lowerSubject.includes('重构') ||
+                 lowerSubject.includes('提升') || lowerSubject.includes('改进')) {
+        type = 'optimization';
+      } else {
+        // 跳过其他类型的提交
+        continue;
+      }
+
+      entriesToCreate.push({
+        type,
+        title: subject,
+        trigger: 'git',
+        commitHash,
+      });
+    }
+
+    if (entriesToCreate.length > 0) {
+      const createdCount = await changelogStore.bulkCreate(entriesToCreate);
+      console.log(`✅ 成功创建 ${createdCount} 条变更日志条目`);
+    } else {
+      console.log('✅ Git 扫描完成，无匹配的提交类型');
+    }
+
+    // 更新扫描时间
+    await changelogStore.updateScanTime();
+    console.log('✅ Git 变更日志扫描完成');
+
+  } catch (error) {
+    console.error('❌ Git 变更日志扫描失败:', error);
+  }
+}
+
 export function initLogRotator(): void {
   (globalThis as any).__logRotator = logRotator;
   logRotator.cleanOldLogs();
@@ -64,6 +185,11 @@ export async function initChangelogCron(): Promise<void> {
   try {
     const cronStore = new CronStore('.agent/cron.db');
     const scheduler = new CronScheduler(cronStore);
+
+    // 监听 cron trigger 事件
+    scheduler.on('trigger', async (job: any) => {
+      await executeChangelogCron(job);
+    });
 
     await scheduler.start();
 
