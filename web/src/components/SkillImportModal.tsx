@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Tabs, Input, Upload, Button, message, List, Tag, Alert, Typography, Space } from 'antd';
+import { Modal, Tabs, Input, Upload, Button, message, List, Tag, Alert, Typography, Space, Checkbox } from 'antd';
 import { UploadOutlined, LinkOutlined, InboxOutlined } from '@ant-design/icons';
 
 const { Dragger } = Upload;
@@ -30,6 +30,7 @@ export default function SkillImportModal({ open, onClose, onImported }: Props) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResponse | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
+  const [forceOverwrite, setForceOverwrite] = useState(false);
 
   const reset = () => {
     setUrl('');
@@ -50,7 +51,7 @@ export default function SkillImportModal({ open, onClose, onImported }: Props) {
       const res = await fetch('/api/skills/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'url', value: url.trim(), force: false }),
+        body: JSON.stringify({ type: 'url', value: url.trim(), force: forceOverwrite }),
       });
       const data: ImportResponse = await res.json();
       setResult(data);
@@ -70,7 +71,7 @@ export default function SkillImportModal({ open, onClose, onImported }: Props) {
       const formData = new FormData();
       formData.append('type', 'zip');
       formData.append('file', zipFile);
-      formData.append('force', 'false');
+      formData.append('force', String(forceOverwrite));
       const res = await fetch('/api/skills/import', {
         method: 'POST',
         body: formData,
@@ -221,6 +222,11 @@ export default function SkillImportModal({ open, onClose, onImported }: Props) {
       width={640}
       destroyOnClose
     >
+      <div style={{ marginBottom: 12 }}>
+        <Checkbox checked={forceOverwrite} onChange={e => setForceOverwrite(e.target.checked)}>
+          覆盖名称相同的已有技能
+        </Checkbox>
+      </div>
       <Tabs
         items={[
           { key: 'url', label: 'URL 导入', children: urlTab },

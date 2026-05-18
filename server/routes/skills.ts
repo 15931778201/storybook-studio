@@ -82,8 +82,8 @@ skills.post('/import', async (c) => {
 
 function formatImportResponse(results: ImportResult[]) {
   const imported = results.filter(r => r.success).map(r => ({ name: r.name, title: r.title, overwritten: r.overwritten }));
-  const skipped = results.filter(r => !r.success && r.error === '技能已存在').map(r => ({ name: r.name, reason: r.error }));
-  const errors = results.filter(r => !r.success && r.error !== '技能已存在').map(r => ({ name: r.name, error: r.error }));
+  const skipped = results.filter(r => !r.success && r.reason === 'duplicate').map(r => ({ name: r.name, reason: r.error }));
+  const errors = results.filter(r => !r.success && r.reason !== 'duplicate').map(r => ({ name: r.name, error: r.error }));
   return { imported, skipped, errors };
 }
 

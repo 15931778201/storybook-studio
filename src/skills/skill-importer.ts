@@ -15,14 +15,14 @@ export class SkillImporter {
   async importFromUrl(url: string, force: boolean = false): Promise<ImportResult[]> {
     const sourceType = this.detectSourceType(url);
     if (sourceType === 'unknown') {
-      return [{ name: 'unknown', title: 'unknown', success: false, overwritten: false, error: '无法识别的 URL 格式' }];
+      return [{ name: 'unknown', title: 'unknown', success: false, overwritten: false, reason: 'unknown', error: '无法识别的 URL 格式' }];
     }
 
     let content: string;
     try {
       content = sourceType === 'github' ? await this.downloadFromGitHub(url) : await this.fetchUrl(url);
     } catch (e: any) {
-      return [{ name: 'unknown', title: 'unknown', success: false, overwritten: false, error: `下载失败: ${e.message}` }];
+      return [{ name: 'unknown', title: 'unknown', success: false, overwritten: false, reason: 'download_error', error: `下载失败: ${e.message}` }];
     }
 
     const result = await this.installSingleSkill(content, force);
@@ -36,7 +36,7 @@ export class SkillImporter {
     try {
       zip = new AdmZip(buffer);
     } catch (e: any) {
-      return [{ name: 'unknown', title: 'unknown', success: false, overwritten: false, error: `ZIP 解析失败: ${e.message}` }];
+      return [{ name: 'unknown', title: 'unknown', success: false, overwritten: false, reason: 'zip_error', error: `ZIP 解析失败: ${e.message}` }];
     }
 
     const entries = zip.getEntries();
@@ -47,7 +47,7 @@ export class SkillImporter {
     );
 
     if (mdEntries.length === 0) {
-      return [{ name: 'unknown', title: 'unknown', success: false, overwritten: false, error: 'ZIP 中未找到技能文件（需 .md 文件，支持 skills/ 目录或根目录）' }];
+      return [{ name: 'unknown', title: 'unknown', success: false, overwritten: false, reason: 'zip_error', error: 'ZIP 中未找到技能文件（需 .md 文件，支持 skills/ 目录或根目录）' }];
     }
 
     for (const entry of mdEntries) {
@@ -86,7 +86,7 @@ export class SkillImporter {
   private async installSingleSkill(raw: string, force: boolean): Promise<ImportResult> {
     const parsed = this.skillManager.parseSkillContent(raw);
     if (!parsed) {
-      return { name: 'unknown', title: 'unknown', success: false, overwritten: false, error: '技能格式无效：无法解析 YAML front matter 或步骤' };
+      return { name: 'unknown', title: 'unknown', success: false, overwritten: false, reason: 'parse_error', error: '技能格式无效：无法解析 YAML front matter 或步骤' };
     }
 
     const name = parsed.metadata.name;
@@ -94,17 +94,17 @@ export class SkillImporter {
     const existing = this.skillManager.getSkillMeta(name);
 
     if (existing && !force) {
-      return { name, title, success: false, overwritten: false, error: '技能已存在' };
+      return { name, title, success: false, overwritten: false, reason: 'duplicate', error: '技能已存在' };
     }
 
     try {
-      const result = this.skillManager.importSkill(raw, true);
+      const result = this.skillManager.importSkill(raw, force);
       if (!result) {
-        return { name, title, success: false, overwritten: false, error: '安装失败: 保存文件失败' };
+        return { name, title, success: false, overwritten: false, reason: 'save_error', error: '安装失败: 保存文件失败' };
       }
       return { name, title, success: true, overwritten: !!existing };
     } catch (e: any) {
-      return { name, title, success: false, overwritten: false, error: `安装失败: ${e.message}` };
+      return { name, title, success: false, overwritten: false, reason: 'save_error', error: `安装失败: ${e.message}` };
     }
   }
 }

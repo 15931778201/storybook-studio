@@ -69,7 +69,7 @@ export default function KnowledgeGraphView({ data, loading }: { data: GraphData 
   }, [data]);
 
   if (loading) return <div style={{ textAlign: 'center', paddingTop: 40 }}><Spin /></div>;
-  if (!data || data.entities.length === 0) return <Empty description="暂无图谱数据。请重新索引知识库以构建图谱。" />;
+  if (!data || data.entities.length === 0) return <Empty description="No graph data. Reindex the knowledge base to build the graph." />;
 
   return (
     <div>
@@ -77,11 +77,11 @@ export default function KnowledgeGraphView({ data, loading }: { data: GraphData 
         {Object.entries(TYPE_COLORS).map(([type, color]) => (
           <span key={type} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block' }} />
-            {type === 'class' ? '类' : type === 'function' ? '函数' : type === 'variable' ? '变量' : type === 'interface' ? '接口' : type === 'concept' ? '概念' : type === 'file' ? '文件' : type}
+            {type}
           </span>
         ))}
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#888' }}>
-          {data.entities.length} 个节点, {data.edges.length} 条边
+          {data.entities.length} nodes, {data.edges.length} edges
         </span>
       </div>
       <div ref={containerRef} style={{ width: '100%', height: 500, border: '1px solid #e8e8e8', borderRadius: 8 }} />

@@ -26,10 +26,13 @@ export interface StepResult { stepId: string; order: number; tool: string; succe
 
 export type ImportSourceType = 'github' | 'clawhub' | 'direct' | 'unknown';
 
+export type ImportResultReason = 'duplicate' | 'parse_error' | 'download_error' | 'zip_error' | 'save_error' | 'unknown';
+
 export interface ImportResult {
   name: string;
   title: string;
   success: boolean;
   overwritten: boolean;
   error?: string;
+  reason?: ImportResultReason;
 }
