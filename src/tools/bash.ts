@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { safeExecute, Tool, ToolResult } from '../core/tool';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { appendAuditLog } from '../utils/logger';
+import { resolveWorkspaceRoot, WorkspaceToolOptions } from './workspace';
 const execAsync = promisify(exec) as (command: string, options?: { shell?: boolean | string; timeout?: number; maxBuffer?: number }) => Promise<{ stdout: string; stderr: string }>;
 
 function shellQuote(arg: string): string {
@@ -27,6 +29,10 @@ export class BashTool extends Tool {
     ).describe('超时毫秒（1-120秒，默认30秒）'),
   });
 
+  constructor(private options: WorkspaceToolOptions = {}) {
+    super();
+  }
+
   protected async executeCore(validatedParams: unknown): Promise<ToolResult> {
     const { command, args = [], timeout } = validatedParams as z.infer<typeof this.parameters>;
     const safeInternal = Math.min(Math.max(Number(timeout) || 30_000, 1000), 2_147_483_647);
@@ -34,6 +40,7 @@ export class BashTool extends Tool {
     const cmd = args.length > 0
       ? `${command} ${args.map(shellQuote).join(' ')}`
       : command;
+    const risk = classifyCommandRisk(cmd);
 
     return safeExecute(
       this.name,
@@ -43,9 +50,17 @@ export class BashTool extends Tool {
             shell: true,
             timeout: safeInternal,
             maxBuffer: 5 * 1024 * 1024,
+            cwd: resolveWorkspaceRoot(this.options.workspaceRoot),
           });
           const output = stdout + (stderr ? `\n[STDERR] ${stderr}` : '');
-          return { success: true, output };
+          appendAuditLog({
+            tool: this.name,
+            command: cmd,
+            riskLevel: risk.riskLevel,
+            requiresConfirmation: risk.requiresConfirmation,
+            timestamp: new Date().toISOString(),
+          });
+          return { success: true, output, metadata: risk };
         } catch (error: any) {
           const partialStdout = error.stdout || '';
           const partialStderr = error.stderr || '';
@@ -55,10 +70,28 @@ export class BashTool extends Tool {
           } else {
             output += `\n[退出码 ${error.code}]`;
           }
-          return { success: true, output };
+          appendAuditLog({
+            tool: this.name,
+            command: cmd,
+            riskLevel: risk.riskLevel,
+            requiresConfirmation: risk.requiresConfirmation,
+            exitCode: error.code,
+            timestamp: new Date().toISOString(),
+          });
+          return { success: true, output, metadata: risk };
         }
       },
       { timeout: safeInternal + 5000, maxOutput: 10000 }
     );
   }
+}
+
+function classifyCommandRisk(command: string): { riskLevel: 'low' | 'medium' | 'high'; requiresConfirmation: boolean } {
+  if (/(rm\s+-rf|git\s+reset\s+--hard|mkfs|dd\s+if=|shutdown|reboot|:\(\)\s*\{)/.test(command)) {
+    return { riskLevel: 'high', requiresConfirmation: true };
+  }
+  if (/(git\s+clean\s+-fd|chmod\s+-R|chown\s+-R)/.test(command)) {
+    return { riskLevel: 'medium', requiresConfirmation: true };
+  }
+  return { riskLevel: 'low', requiresConfirmation: false };
 }

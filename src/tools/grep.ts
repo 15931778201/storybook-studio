@@ -2,6 +2,7 @@ import { Tool, safeExecute } from '../core/tool';
 import { z } from 'zod';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { resolveWorkspacePath, WorkspaceToolOptions } from './workspace';
 
 const execAsync = promisify(exec);
 
@@ -14,14 +15,19 @@ export class GrepTool extends Tool {
     include: z.string().optional().describe('文件过滤，如 *.ts'),
   });
 
+  constructor(private options: WorkspaceToolOptions = {}) {
+    super();
+  }
+
   protected async executeCore(validatedParams: any) {
     const { pattern, path, include } = validatedParams;
+    const targetPath = resolveWorkspacePath(this.options.workspaceRoot, path);
 
     // 构建 grep 命令，通过 shell 管道 head 截断输出，避免 maxBuffer exceeded
     let cmd = `grep -r -n --color=never`;
     if (include) cmd += ` --include='${include.replace(/'/g, "'\\''")}'`;
     // 转义 pattern 中的单引号
-    cmd += ` '${pattern.replace(/'/g, "'\\''")}' '${path.replace(/'/g, "'\\''")}'`;
+    cmd += ` '${pattern.replace(/'/g, "'\\''")}' '${targetPath.replace(/'/g, "'\\''")}'`;
     cmd += ` | head -80`;
 
     return safeExecute(this.name, async () => {

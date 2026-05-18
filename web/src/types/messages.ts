@@ -13,7 +13,7 @@ export interface ChatMessage {
   steps?: ThinkingStep[];
   timestamp?: number;
   imageBase64?: string;
-  contentType?: 'text' | 'plan' | 'decision' | 'pipeline' | 'diff';
+  contentType?: 'text' | 'plan' | 'decision' | 'pipeline' | 'diff' | 'summary';
   metadata?: Record<string, any>;
 }
 
@@ -22,6 +22,18 @@ export interface ConfirmRequest {
   toolName: string;
   args: any;
   diff: string;
+  files?: Array<{
+    filePath: string;
+    changeType: 'added' | 'deleted' | 'modified';
+    accepted: boolean;
+  }>;
+  summary?: {
+    total: number;
+    accepted: number;
+    added: number;
+    deleted: number;
+    modified: number;
+  };
 }
 
 export interface PlanStep {
@@ -32,6 +44,7 @@ export interface PlanStep {
   status: 'pending' | 'running' | 'done' | 'error';
   dependsOn?: number[];
   duration?: number;
+  resultSummary?: string;
 }
 
 export interface Workspace {

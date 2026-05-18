@@ -14,6 +14,11 @@ export { WriteFileTool } from './tools/write-file';
 export { BashTool } from './tools/bash';
 export { GrepTool } from './tools/grep';
 export { GlobTool } from './tools/glob';
+export { EditFileTool } from './tools/edit-file';
+export { ApplyPatchTool } from './tools/apply-patch';
+export { JsonQueryTool } from './tools/json-query';
+export { GitTool } from './tools/git';
+export { RepoMapTool } from './tools/repo-map';
 
 // ── 上下文策略 ──
 export { SlidingWindowContextManager } from './context/sliding-window';

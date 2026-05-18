@@ -2,6 +2,7 @@ import { Tool, safeExecute, ToolResult } from '../core/tool';
 import { z } from 'zod';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { WorkspaceToolOptions, resolveWorkspaceRoot } from './workspace';
 
 const execFileAsync = promisify(execFile);
 
@@ -13,6 +14,8 @@ export class GitTool extends Tool {
     args: z.array(z.string()).optional().default([]),
   });
 
+  constructor(private options: WorkspaceToolOptions = {}) { super(); }
+
   protected async executeCore(validatedParams: unknown): Promise<ToolResult> {
     const { subcommand, args = [] } = validatedParams as z.infer<typeof this.parameters>;
     return safeExecute(this.name, async () => {
@@ -23,7 +26,7 @@ export class GitTool extends Tool {
       const { stdout } = await execFileAsync('git', [subcommand, ...args], {
         timeout: 30000,
         maxBuffer: 1024 * 1024 * 5,
-        cwd: process.cwd(),
+        cwd: resolveWorkspaceRoot(this.options.workspaceRoot),
       });
       return { success: true, output: stdout.slice(0, 5000) };
     }, { timeout: 35000, maxOutput: 5000 });

@@ -10,7 +10,7 @@ interface ChatContextValue {
   activeConversationId: string;
   setActiveConversationId: (id: string) => void;
   confirmRequest: ConfirmRequest | null;
-  resolveConfirm: (approved: boolean) => void;
+  resolveConfirm: (approved: boolean, selectedFiles?: Record<string, boolean>) => void;
   workspaces: Workspace[];
   activeWorkspaceId: string;
   setActiveWorkspaceId: (id: string) => void;
@@ -60,16 +60,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const messages = messageStore[currentKey] || [];
 
   const updateMessages = (updater: (prev: ChatMessage[]) => ChatMessage[]) =>
-    setMessageStore(prev => ({ ...prev, [currentKey]: updater(prev[currentKey] || []) }));
+    setMessageStore((prev) => ({ ...prev, [currentKey]: updater(prev[currentKey] || []) }));
 
   const setMessages = (action: any) =>
-    updateMessages(prev => (typeof action === 'function' ? action(prev) : action));
+    updateMessages((prev) => (typeof action === 'function' ? action(prev) : action));
 
   const [isRequesting, setIsRequesting] = useState(false);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [conversationTitles, setConversationTitles] = useState<Record<string, string>>({});
   const updateConversationTitle = useCallback((id: string, title: string) => {
-    setConversationTitles(prev => ({ ...prev, [id]: title }));
+    setConversationTitles((prev) => ({ ...prev, [id]: title }));
   }, []);
   const confirmResolverRef = useRef<((b: boolean) => void) | null>(null);
   const esRef = useRef<EventSource | null>(null);
@@ -80,7 +80,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setIsRequesting(false);
   };
 
-  const resolveConfirm = (approved: boolean) => {
+  const resolveConfirm = (approved: boolean, selectedFiles?: Record<string, boolean>) => {
     if (confirmResolverRef.current) {
       confirmResolverRef.current(approved);
       confirmResolverRef.current = null;
@@ -88,14 +88,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     fetch('/api/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: activeConversationId, approved }),
+      body: JSON.stringify({ sessionId: activeConversationId, approved, selectedFiles }),
     }).catch(console.error);
     setConfirmRequest(null);
   };
 
   const addWorkspace = (name: string, projectPath: string, knowledgeBaseIds: string[] = []) => {
     const ws: Workspace = { id: 'ws-' + Date.now(), name, projectPath, knowledgeBaseIds };
-    setWorkspaces(prev => [...prev, ws]);
+    setWorkspaces((prev) => [...prev, ws]);
     setActiveWorkspaceId(ws.id);
   };
 
@@ -112,24 +112,23 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         timestamp: Date.now(),
         imageBase64: image || undefined,
       };
-      updateMessages(prev => [...prev, userMsg]);
+      updateMessages((prev) => [...prev, userMsg]);
 
       if (!conversationTitles[activeConversationId]) {
-        const title = trimmed.length > 30 ? trimmed.slice(0, 30) + '…' : trimmed;
+        const title = trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed;
         updateConversationTitle(activeConversationId, title);
       }
       setIsRequesting(true);
 
       const assistantId = crypto.randomUUID();
       thinkingIdRef.current = assistantId;
-      updateMessages(prev => [
+      updateMessages((prev) => [
         ...prev,
         { id: assistantId, role: 'assistant', content: '', contentType: 'text', timestamp: Date.now(), steps: [] },
       ]);
 
       const params = new URLSearchParams({ input: text });
 
-      // 图片预上传：先上传到后端，再传引用路径
       if (image) {
         try {
           const blob = await (await fetch(image)).blob();
@@ -145,20 +144,21 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const activeWs = workspaces.find(w => w.id === activeWorkspaceId);
+      const activeWs = workspaces.find((w) => w.id === activeWorkspaceId);
+      if (activeWs?.projectPath) {
+        params.append('projectPath', activeWs.projectPath);
+      }
       if (activeWs?.knowledgeBaseIds?.length) {
         params.append('kbIds', activeWs.knowledgeBaseIds.join(','));
       }
-
       if (activeRole) {
         params.append('roleId', activeRole.id);
       }
 
-      const url = `/api/stream/${activeConversationId}?${params.toString()}`;
-      const es = new EventSource(url);
+      const es = new EventSource(`/api/stream/${activeConversationId}?${params.toString()}`);
       esRef.current = es;
 
-      es.onmessage = event => {
+      es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           const content = safeString(data.content);
@@ -166,7 +166,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           switch (data.type) {
             case 'stream':
             case 'text':
-              updateMessages(prev => prev.map(m =>
+              updateMessages((prev) => prev.map((m) =>
                 m.id === thinkingIdRef.current
                   ? { ...m, content: m.content + content }
                   : m
@@ -174,7 +174,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               break;
 
             case 'plan':
-              updateMessages(prev => [
+              updateMessages((prev) => [
                 ...prev,
                 {
                   id: crypto.randomUUID(),
@@ -188,7 +188,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               break;
 
             case 'decision':
-              updateMessages(prev => [
+              updateMessages((prev) => [
                 ...prev,
                 {
                   id: crypto.randomUUID(),
@@ -202,7 +202,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               break;
 
             case 'pipeline':
-              updateMessages(prev => [
+              updateMessages((prev) => [
                 ...prev,
                 {
                   id: crypto.randomUUID(),
@@ -216,19 +216,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               break;
 
             case 'plan-step-update':
-              updateMessages(prev => prev.map(m => {
+              updateMessages((prev) => prev.map((m) => {
                 if (m.contentType !== 'plan' || !m.metadata?.steps) return m;
-                const updatedSteps = (m.metadata.steps as PlanStep[]).map(s =>
+                const updatedSteps = (m.metadata.steps as PlanStep[]).map((s) =>
                   s.stepId === data.stepId
-                    ? { ...s, status: data.status, duration: data.duration ?? s.duration }
-                    : s
+                    ? { ...s, status: data.status, duration: data.duration ?? s.duration, resultSummary: data.resultSummary ?? s.resultSummary }
+                    : s,
                 );
                 return { ...m, metadata: { ...m.metadata, steps: updatedSteps } };
               }));
               break;
 
             case 'replan':
-              updateMessages(prev => prev.map(m => {
+              updateMessages((prev) => prev.map((m) => {
                 if (m.contentType !== 'plan') return m;
                 return {
                   ...m,
@@ -243,29 +243,95 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               break;
 
             case 'tool-start':
-              updateMessages(prev =>
-                prev.map(m => {
+              updateMessages((prev) =>
+                prev.map((m) => {
                   if (m.id !== thinkingIdRef.current) return m;
                   const step: ThinkingStep = { id: crypto.randomUUID(), toolName: data.toolName, args: data.args, result: '', status: 'running' };
                   return { ...m, steps: [...(m.steps || []), step] };
-                })
+                }),
               );
               break;
 
             case 'tool-end':
-              updateMessages(prev =>
-                prev.map(m => {
+              updateMessages((prev) =>
+                prev.map((m) => {
                   if (m.id !== thinkingIdRef.current) return m;
                   return {
                     ...m,
                     steps: (m.steps || []).map((s: any) =>
                       s.toolName === data.toolName && s.status === 'running'
                         ? { ...s, result: data.result, status: data.status || 'done' }
-                        : s
+                        : s,
                     ),
                   };
-                })
+                }),
               );
+              break;
+
+            case 'test-result':
+              updateMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'system',
+                  content: `${data.summary}\n${data.command ? `命令: ${data.command}\n` : ''}${safeString(data.output)}`,
+                  contentType: 'text',
+                  timestamp: Date.now(),
+                },
+              ]);
+              break;
+
+            case 'repair-start':
+              updateMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'system',
+                  content: `自动修复开始\n${data.command ? `命令: ${data.command}\n` : ''}${data.changedFiles?.length ? `文件: ${data.changedFiles.join(', ')}\n` : ''}${safeString(data.output)}`,
+                  contentType: 'text',
+                  timestamp: Date.now(),
+                },
+              ]);
+              break;
+
+            case 'repair-end':
+              updateMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'system',
+                  content: `自动修复${data.success ? '完成' : '后仍失败'}\n${safeString(data.output)}\n${safeString(data.rerunOutput)}`,
+                  contentType: 'text',
+                  timestamp: Date.now(),
+                },
+              ]);
+              break;
+
+            case 'repair-skipped':
+              updateMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'system',
+                  content: `自动修复未执行\n${safeString(data.output)}`,
+                  contentType: 'text',
+                  timestamp: Date.now(),
+                },
+              ]);
+              break;
+
+            case 'summary-ready':
+              updateMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'system',
+                  content: `变更总结\n已应用: ${(data.summary?.appliedFiles || []).join(', ') || '无'}\n测试: ${data.summary?.verification?.commands?.join(', ') || '未执行'}`,
+                  contentType: 'summary',
+                  metadata: data.summary,
+                  timestamp: Date.now(),
+                },
+              ]);
               break;
 
             case 'confirm':
@@ -274,11 +340,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 toolName: data.toolName,
                 args: data.args,
                 diff: safeString(data.diff),
+                files: data.files,
+                summary: data.summary,
               });
               break;
 
             case 'final':
-              updateMessages(prev => prev.map(m =>
+              updateMessages((prev) => prev.map((m) =>
                 m.id === thinkingIdRef.current
                   ? { ...m, content }
                   : m
@@ -289,7 +357,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               break;
 
             case 'error':
-              updateMessages(prev => prev.map(m =>
+              updateMessages((prev) => prev.map((m) =>
                 m.id === thinkingIdRef.current
                   ? { ...m, content: `错误: ${content}` }
                   : m
@@ -304,7 +372,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       es.onerror = () => {
         if (thinkingIdRef.current) {
-          updateMessages(prev => prev.map(m =>
+          updateMessages((prev) => prev.map((m) =>
             m.id === thinkingIdRef.current
               ? { ...m, content: m.content || '⚠️ 连接已断开，请检查后端服务是否正常运行，然后重试。' }
               : m
@@ -315,7 +383,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setIsRequesting(false);
       };
     },
-    [activeConversationId, activeRole, isRequesting, updateMessages, conversationTitles, updateConversationTitle, workspaces, activeWorkspaceId]
+    [activeConversationId, activeRole, isRequesting, updateMessages, conversationTitles, updateConversationTitle, workspaces, activeWorkspaceId],
   );
 
   useEffect(() => {

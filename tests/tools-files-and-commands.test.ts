@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
   ArchiveTool,
+  ApplyPatchTool,
   BashTool,
   EditFileTool,
   GitTool,
@@ -192,5 +193,31 @@ describe('file and command tools', () => {
     expect(compress.success).toBe(true);
     expect(decompress.success).toBe(true);
     expect(fs.readFileSync(path.join(extracted, 'source.txt'), 'utf-8')).toBe('archived content');
+  });
+
+  it('ApplyPatchTool updates multiple files from patch instructions', async () => {
+    await withTempCwd(async (dir) => {
+      fs.writeFileSync(path.join(dir, 'a.ts'), 'export const a = 1;\n', 'utf-8');
+      fs.writeFileSync(path.join(dir, 'b.ts'), 'export const b = true;\n', 'utf-8');
+
+      const result = await new ApplyPatchTool().execute({
+        patches: [
+          {
+            filePath: 'a.ts',
+            search: 'export const a = 1;',
+            replace: 'export const a = 2;',
+          },
+          {
+            filePath: 'b.ts',
+            search: 'export const b = true;',
+            replace: 'export const b = false;',
+          },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+      expect(fs.readFileSync(path.join(dir, 'a.ts'), 'utf-8')).toContain('export const a = 2;');
+      expect(fs.readFileSync(path.join(dir, 'b.ts'), 'utf-8')).toContain('export const b = false;');
+    });
   });
 });

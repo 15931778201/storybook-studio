@@ -1,7 +1,7 @@
 import { Tool, safeExecute, ToolResult } from '../core/tool';
 import { z } from 'zod';
 import fs from 'fs';
-import path from 'path';
+import { resolveWorkspacePath, WorkspaceToolOptions } from './workspace';
 
 export class JsonQueryTool extends Tool {
   name = 'json_query';
@@ -11,10 +11,16 @@ export class JsonQueryTool extends Tool {
     path: z.string().optional().describe('点号分隔的路径，如 users.0.name，留空返回整个 JSON'),
   });
 
+  constructor(private options: WorkspaceToolOptions = {}) { super(); }
+
+  resolvePath(filePath: string) {
+    return resolveWorkspacePath(this.options.workspaceRoot, filePath);
+  }
+
   protected async executeCore(validatedParams: unknown): Promise<ToolResult> {
     const { filePath, path: queryPath } = validatedParams as z.infer<typeof this.parameters>;
     return safeExecute(this.name, async () => {
-      const fullPath = path.resolve(process.cwd(), filePath);
+      const fullPath = this.resolvePath(filePath);
       const content = fs.readFileSync(fullPath, 'utf-8');
       const data = JSON.parse(content);
       if (!queryPath) return { success: true, output: JSON.stringify(data, null, 2).slice(0, 4000) };

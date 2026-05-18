@@ -75,9 +75,12 @@ export default function ChatPage() {
           <Suspense fallback={<div>加载中...</div>}>
             <ConfirmDialog
               toolName={confirmRequest.toolName}
+              args={confirmRequest.args}
               diff={confirmRequest.diff}
               onConfirm={handleConfirm}
               onReject={handleReject}
+              files={confirmRequest.files}
+              summary={confirmRequest.summary}
             />
           </Suspense>
         )}

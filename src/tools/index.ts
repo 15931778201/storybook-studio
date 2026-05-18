@@ -7,9 +7,10 @@ export { GlobTool } from './glob';
 export { WebFetchTool } from './web-fetch';
 export { WebSearchTool } from './web-search';
 export { EditFileTool } from './edit-file';
+export { ApplyPatchTool } from './apply-patch';
 export { JsonQueryTool } from './json-query';
 export { GitTool } from './git';
 export { NotificationTool } from './notification';
 export { ArchiveTool } from './archive';
+export { RepoMapTool } from './repo-map';
 // export { SkillDistillerTool } from './skill-distiller';
-

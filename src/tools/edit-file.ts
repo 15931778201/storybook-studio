@@ -1,7 +1,9 @@
 import { Tool, safeExecute, ToolResult, ToolError } from '../core/tool';
 import { z } from 'zod';
 import fs from 'fs';
-import path from 'path';
+import { generateUnifiedDiff } from '../utils/diff';
+import { appendAuditLog } from '../utils/logger';
+import { resolveWorkspacePath, WorkspaceToolOptions } from './workspace';
 
 export class EditFileTool extends Tool {
   name = 'edit_file';
@@ -13,10 +15,14 @@ export class EditFileTool extends Tool {
     isRegex: z.boolean().optional().default(false).describe('是否使用正则表达式'),
   });
 
+  constructor(private options: WorkspaceToolOptions = {}) {
+    super();
+  }
+
   protected async executeCore(validatedParams: unknown): Promise<ToolResult> {
     const { filePath, search, replace, isRegex } = validatedParams as z.infer<typeof this.parameters>;
     return safeExecute(this.name, async () => {
-      const fullPath = path.resolve(process.cwd(), filePath);
+      const fullPath = resolveWorkspacePath(this.options.workspaceRoot, filePath);
       if (!fs.existsSync(fullPath)) {
         throw new ToolError(`文件不存在: ${filePath}`, this.name, { filePath });
       }
@@ -32,7 +38,9 @@ export class EditFileTool extends Tool {
         return { success: true, output: '未找到匹配内容，文件无变化' };
       }
       fs.writeFileSync(fullPath, content, 'utf-8');
-      return { success: true, output: `已在 ${filePath} 中完成替换` };
+      const diff = generateUnifiedDiff(before, content, filePath);
+      appendAuditLog({ tool: this.name, filePath, diff, timestamp: new Date().toISOString() });
+      return { success: true, output: `已在 ${filePath} 中完成替换`, metadata: { changedFiles: [filePath], diff } };
     });
   }
 }
