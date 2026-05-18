@@ -13,6 +13,8 @@ import { CronStore } from '../src/cron/cron-store';
 import { CronScheduler } from '../src/cron/cron-scheduler';
 import { setDefaultEmbeddingConfig } from '../src/vector/embeddings';
 import type { CronJob } from '../src/types/cron';
+import fs from 'fs';
+import path from 'path';
 
 export const vectorStore = new FileVectorStore('.agent/vectors.json');
 
@@ -49,6 +51,48 @@ export const logRotator = new LogRotator();
 export const changelogStore = new ChangelogStore();
 
 let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+// 新增：清理临时文件的函数
+async function cleanupTempFiles(): Promise<void> {
+  const tempDir = path.join(process.cwd(), '.agent', 'temp');
+  if (!fs.existsSync(tempDir)) {
+    return;
+  }
+  
+  try {
+    const files = fs.readdirSync(tempDir);
+    const oneHourAgo = Date.now() - 60 * 60 * 1000; // 1小时前的时间戳
+    
+    for (const file of files) {
+      const filePath = path.join(tempDir, file);
+      try {
+        const stat = fs.statSync(filePath);
+        // 如果文件名是数字（时间戳）且文件创建时间超过1小时，则删除
+        if (/^\d+\.jpg$/.test(file) && stat.birthtimeMs < oneHourAgo) {
+          fs.unlinkSync(filePath);
+          console.log(`🧹 清理临时文件: ${filePath}`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ 处理临时文件失败: ${filePath}`, error);
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️ 清理临时文件目录失败:', error);
+  }
+}
+
+export function initLogRotator(): void {
+  (globalThis as any).__logRotator = logRotator;
+  logRotator.cleanOldLogs();
+  cleanupTempFiles().catch(() => {});
+
+  if (!cleanupInterval) {
+    cleanupInterval = setInterval(() => {
+      logRotator.cleanOldLogs().catch(() => {});
+      cleanupTempFiles().catch(() => {});
+    }, 3600000); // 每小时执行一次
+  }
+}
 
 // 新增：处理 changelog cron 任务的实际执行逻辑
 async function executeChangelogCron(job: CronJob): Promise<void> {
@@ -167,17 +211,6 @@ async function executeChangelogCron(job: CronJob): Promise<void> {
 
   } catch (error) {
     console.error('❌ Git 变更日志扫描失败:', error);
-  }
-}
-
-export function initLogRotator(): void {
-  (globalThis as any).__logRotator = logRotator;
-  logRotator.cleanOldLogs();
-
-  if (!cleanupInterval) {
-    cleanupInterval = setInterval(() => {
-      logRotator.cleanOldLogs().catch(() => {});
-    }, 3600000);
   }
 }
 
