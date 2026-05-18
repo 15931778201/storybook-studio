@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, ConfigProvider, theme as antTheme, Button, Tooltip, Space, Menu } from 'antd';
-import { SunOutlined, MoonOutlined, MessageOutlined, AppstoreOutlined, ShoppingOutlined, SettingOutlined, BookOutlined, ClockCircleOutlined, UserOutlined, FileTextOutlined, DiffOutlined } from '@ant-design/icons';
+import { SunOutlined, MoonOutlined, MessageOutlined, AppstoreOutlined, ShoppingOutlined, SettingOutlined, BookOutlined, ClockCircleOutlined, UserOutlined, FileTextOutlined, DiffOutlined, ToolOutlined } from '@ant-design/icons';
 import { XProvider } from '@ant-design/x';
 import { ChatProvider, useChatContext } from './providers/ChatProvider';
 
@@ -14,6 +14,7 @@ import KnowledgePage from './pages/KnowledgePage';
 import NewKnowledgeFilePage from './pages/NewKnowledgeFilePage';
 import FileViewPage from './pages/FileViewPage';
 import RoleManagementPage from './pages/RoleManagementPage';
+import ToolsPage from './pages/ToolsPage';
 import './App.css';
 import CronPage from './pages/CronPage';
 import LogsPage from './pages/LogsPage';
@@ -39,6 +40,7 @@ function AppInner() {
   const navItems = [
     { key: '/', icon: <MessageOutlined />, label: '对话' },
     { key: '/skills', icon: <AppstoreOutlined />, label: '技能' },
+    { key: '/tools', icon: <ToolOutlined />, label: '工具' },
     { key: '/market', icon: <ShoppingOutlined />, label: '市场' },
     { key: '/knowledge', icon: <BookOutlined />, label: '知识库' },
     { key: '/roles', icon: <UserOutlined />, label: '角色' },
@@ -84,6 +86,7 @@ function AppInner() {
           <Routes>
             <Route path="/" element={<ChatPage />} />
             <Route path="/skills" element={<SkillsPage />} />
+            <Route path="/tools" element={<ToolsPage />} />
             <Route path="/market" element={<MarketPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/knowledge/:kbId/new" element={<NewKnowledgeFilePage />} />

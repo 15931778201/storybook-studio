@@ -1,4 +1,3 @@
-
 // import { Hono } from 'hono'; import { AgentLoop } from '../src/core/agent-loop'; import { ReadFileTool, WriteFileTool, BashTool, GrepTool, GlobTool, WebFetchTool, WebSearchTool, EditFileTool, JsonQueryTool, GitTool, NotificationTool, ArchiveTool } from '../src/tools'; import { FileMemory } from '../src/memory/file-memory'; import { SlidingWindowContextManager } from '../src/context/sliding-window'; import { DiffUndoPolicy } from '../src/policy/diff-undo-policy'; import { SkillManager } from '../src/skills/skill-manager'; import { FileVectorStore } from '../src/vector/file-vector-store'; import { SkillDistillerTool } from '../src/tools/skill-distiller'; import { ApiKeyStore } from '../src/security/key-store'; import { CronStore } from '../src/cron/cron-store'; import { CronScheduler } from '../src/cron/cron-scheduler'; import { AgentEventBus } from '../src/core/events'; import OpenAI from 'openai';
 // const app = new Hono(); const eventBus = AgentEventBus.getInstance(); const sessions = new Map<string, AgentLoop>();
 // const vectorStore = new FileVectorStore('.agent'); const skillManager = new SkillManager('.agent/skills', vectorStore);
@@ -42,6 +41,7 @@ import { changelog } from './routes/changelog';
 import { agent } from './routes/agents';
 import { roles } from './routes/roles';
 import { logs } from './routes/logs';
+import tools from './routes/tools';
 import { imRouter, registerAdapter } from './im/gateway';
 import { WeComAdapter } from '../src/im/wecom-adapter';
 import { DingTalkAdapter } from '../src/im/dingtalk-adapter';
@@ -105,6 +105,7 @@ app.route('/im', imRouter);
 app.route('/api/agents', agent);
 app.route('/api/roles', roles);
 app.route('/api/logs', logs);
+app.route('/api/tools', tools);
 registerAdditionalRoutes(app);
 
 // 图片上传
