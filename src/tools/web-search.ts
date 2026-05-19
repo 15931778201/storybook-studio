@@ -7,7 +7,7 @@ export class WebSearchTool extends Tool {
   description = '通过 DuckDuckGo 搜索网页（无需 API Key）';
   parameters = z.object({
     query: z.string().describe('搜索关键词'),
-    maxResults: z.coerce.number().int().min(1).max(5).optional().default(3),
+    maxResults: z.coerce.number().int().min(1).max(5).optional().default(3).describe('返回结果数量'),
   });
 
   protected async executeCore(validatedParams: unknown): Promise<ToolResult> {

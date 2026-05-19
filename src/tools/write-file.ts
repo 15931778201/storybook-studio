@@ -9,7 +9,16 @@ import { resolveWorkspacePath, WorkspaceToolOptions } from './workspace';
 export class WriteFileTool extends Tool {
   name = 'write_file';
   description = '将内容写入文件，自动备份并生成 diff 预览';
-  parameters = z.object({ filePath: z.string(), content: z.string() });
+  parameters = z.object({ filePath: z.string().describe('文件路径'), content: z.string().describe('文件内容') });
+  
+  // 自然语言示例：展示如何调用此工具
+  example = `要创建一个新文件，请使用 write_file 工具：
+{
+  "filePath": "src/utils/helper.js",
+  "content": "console.log('Hello, World!');"
+}
+
+这将在 src/utils/ 目录下创建 helper.js 文件，内容为 console.log('Hello, World!');`;
 
   constructor(private options: WorkspaceToolOptions = {}) { super(); }
 

@@ -7,10 +7,23 @@ export class ReadFileTool extends Tool {
   name = 'read_file';
   description = '读取指定文件的内容';
   parameters = z.object({
-    filePath: z.string(),
-    offset: z.coerce.number().int().min(0).optional().default(0),
-    limit: z.coerce.number().int().min(1).optional().default(500),
+    filePath: z.string().describe('文件路径'),
+    offset: z.coerce.number().int().min(0).optional().default(0).describe('偏移量'),
+    limit: z.coerce.number().int().min(1).optional().default(500).describe('读取行数限制'),
   });
+  
+  // 自然语言示例：展示如何调用工具
+  example = `// 读取 package.json 文件的全部内容
+{
+  "filePath": "package.json"
+}
+
+// 读取大文件的特定部分（从第100行开始，读取50行）
+{
+  "filePath": "large-file.log",
+  "offset": 100,
+  "limit": 50
+}`;
 
   constructor(private options: WorkspaceToolOptions = {}) { super(); }
 

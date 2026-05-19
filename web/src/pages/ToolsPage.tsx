@@ -55,13 +55,56 @@ export default function ToolsPage() {
   }, []);
 
   const renderParameters = (parameters: any) => {
-    if (!parameters || !parameters.shape) {
+    if (!parameters) {
       return <Text type="secondary">无参数</Text>;
     }
 
-    const shape = parameters.shape;
-    const keys = Object.keys(shape);
+    // 检查是否是简化结构（后端正确处理的情况）
+    const firstParam = Object.values(parameters)[0];
+    if (Object.keys(parameters).length > 0 && 
+        firstParam && 
+        typeof firstParam === 'object' &&
+        'description' in firstParam) {
+      
+      return (
+        <Space direction="vertical" size="small">
+          {Object.entries(parameters).map(([key, paramInfo]: [string, any]) => {
+            if (!paramInfo) {
+              return <div key={key}><Text strong>{key}</Text></div>;
+            }
+            
+            const description = paramInfo.description || key;
+            const type = paramInfo.type || 'any';
+            const required = paramInfo.required !== false;
+
+            return (
+              <div key={key}>
+                <Text strong>{description}</Text>
+                <Text type="secondary" style={{ marginLeft: 8 }}>
+                  ({type}{required ? '' : ', 可选'})
+                </Text>
+              </div>
+            );
+          })}
+        </Space>
+      );
+    }
+
+    // 处理原始Zod对象结构（后端未正确处理的情况）
+    let shapeObj: Record<string, any> = {};
     
+    // 尝试从不同位置获取shape
+    if (parameters.shape && typeof parameters.shape === 'object') {
+      shapeObj = parameters.shape;
+    } else if (parameters._def?.shape) {
+      if (typeof parameters._def.shape === 'function') {
+        shapeObj = parameters._def.shape();
+      } else if (typeof parameters._def.shape === 'object') {
+        shapeObj = parameters._def.shape;
+      }
+    }
+    
+    const keys = Object.keys(shapeObj);
     if (keys.length === 0) {
       return <Text type="secondary">无参数</Text>;
     }
@@ -69,52 +112,55 @@ export default function ToolsPage() {
     return (
       <Space direction="vertical" size="small">
         {keys.map(key => {
-          const param = shape[key];
+          const param = shapeObj[key];
           let type = 'any';
-          let required = false;
-          let description = '';
+          let required = true;
+          let description = key;
           
-          if (param?._def?.typeName === 'ZodOptional') {
+          if (!param || !param._def) {
+            return <div key={key}><Text strong>{key}</Text></div>;
+          }
+          
+          // 处理可选参数
+          if (param._def.typeName === 'ZodOptional') {
             required = false;
-            if (param._def.innerType?._def?.typeName === 'ZodString') {
-              type = 'string';
-            } else if (param._def.innerType?._def?.typeName === 'ZodNumber') {
-              type = 'number';
-            } else if (param._def.innerType?._def?.typeName === 'ZodBoolean') {
-              type = 'boolean';
-            } else if (param._def.innerType?._def?.typeName === 'ZodObject') {
-              type = 'object';
-            } else if (param._def.innerType?._def?.typeName === 'ZodArray') {
-              type = 'array';
+            if (param._def.innerType?._def) {
+              const innerDef = param._def.innerType._def;
+              if (innerDef.typeName === 'ZodString') {
+                type = 'string';
+              } else if (innerDef.typeName === 'ZodNumber') {
+                type = 'number';
+              } else if (innerDef.typeName === 'ZodBoolean') {
+                type = 'boolean';
+              } else if (innerDef.typeName === 'ZodObject') {
+                type = 'object';
+              } else if (innerDef.typeName === 'ZodArray') {
+                type = 'array';
+              }
+              description = innerDef.description || key;
             }
           } else {
             required = true;
-            if (param?._def?.typeName === 'ZodString') {
+            if (param._def.typeName === 'ZodString') {
               type = 'string';
-            } else if (param?._def?.typeName === 'ZodNumber') {
+            } else if (param._def.typeName === 'ZodNumber') {
               type = 'number';
-            } else if (param?._def?.typeName === 'ZodBoolean') {
+            } else if (param._def.typeName === 'ZodBoolean') {
               type = 'boolean';
-            } else if (param?._def?.typeName === 'ZodObject') {
+            } else if (param._def.typeName === 'ZodObject') {
               type = 'object';
-            } else if (param?._def?.typeName === 'ZodArray') {
+            } else if (param._def.typeName === 'ZodArray') {
               type = 'array';
             }
+            description = param._def.description || key;
           }
-          
-          description = param?._def?.description || '';
           
           return (
             <div key={key}>
-              <Text strong>{key}</Text>
+              <Text strong>{description}</Text>
               <Text type="secondary" style={{ marginLeft: 8 }}>
                 ({type}{required ? '' : ', 可选'})
               </Text>
-              {description && (
-                <Text type="secondary" style={{ display: 'block', marginLeft: 16 }}>
-                  {description}
-                </Text>
-              )}
             </div>
           );
         })}
@@ -139,38 +185,44 @@ export default function ToolsPage() {
       title: '描述',
       dataIndex: 'description',
       key: 'description',
-      width: '35%',
+      width: '30%',
     },
     {
       title: '参数',
       dataIndex: 'parameters',
       key: 'parameters',
-      width: '35%',
+      width: '30%',
       render: (parameters: any) => renderParameters(parameters),
     },
     {
       title: '示例',
       dataIndex: 'example',
       key: 'example',
-      width: '10%',
+      width: '20%',
       render: (example: string) => 
         example ? (
-          <Paragraph 
-            copyable
-            style={{ 
-              backgroundColor: '#f5f5f5', 
-              padding: '4px 8px', 
-              borderRadius: '4px',
-              fontFamily: 'monospace',
-              fontSize: '12px',
-              margin: 0,
-              cursor: 'pointer'
-            }}
-          >
-            复制示例
-          </Paragraph>
-        ) : null,
+          <div style={{ position: 'relative' }}>
+            <Paragraph 
+              copyable
+              style={{ 
+                backgroundColor: '#f5f5f5', 
+                padding: '12px', 
+                borderRadius: '6px',
+                fontFamily: 'monospace',
+                fontSize: '13px',
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                lineHeight: 1.5,
+                maxHeight: '120px',
+                overflow: 'auto'
+              }}
+            >
+              {example}
+            </Paragraph>
+          </div>
+        ) : <Text type="secondary">无示例</Text>,
     },
+
   ];
 
   if (loading) {
@@ -204,26 +256,6 @@ export default function ToolsPage() {
           rowKey={(record) => `${record.category}-${record.name}`}
           pagination={{ pageSize: 20, showSizeChanger: true }}
           scroll={{ x: 'max-content' }}
-          expandable={{
-            expandedRowRender: (record) => (
-              <div style={{ margin: '16px 0' }}>
-                <Title level={5}>完整示例</Title>
-                <Paragraph 
-                  copyable
-                  style={{ 
-                    backgroundColor: '#f5f5f5', 
-                    padding: '12px', 
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                    whiteSpace: 'pre-wrap'
-                  }}
-                >
-                  {record.example || '暂无示例'}
-                </Paragraph>
-              </div>
-            ),
-            rowExpandable: (record) => !!record.example,
-          }}
         />
       </Card>
     </div>

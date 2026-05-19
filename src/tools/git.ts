@@ -11,7 +11,7 @@ export class GitTool extends Tool {
   description = '执行 git 命令（如 diff, log, status，不包括 push）';
   parameters = z.object({
     subcommand: z.enum(['diff', 'log', 'status', 'branch', 'show']).describe('Git 子命令'),
-    args: z.array(z.string()).optional().default([]),
+    args: z.array(z.string()).optional().default([]).describe('子命令参数'),
   });
 
   constructor(private options: WorkspaceToolOptions = {}) { super(); }

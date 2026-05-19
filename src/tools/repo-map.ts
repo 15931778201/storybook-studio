@@ -13,8 +13,8 @@ export class RepoMapTool extends Tool {
   description = '生成当前工作区的轻量文件树和关键项目文件摘要';
   parameters = z.object({
     path: z.string().optional().default('.').describe('要扫描的工作区相对路径'),
-    maxFiles: z.coerce.number().int().min(1).max(300).optional().default(120),
-    maxDepth: z.coerce.number().int().min(1).max(8).optional().default(4),
+    maxFiles: z.coerce.number().int().min(1).max(300).optional().default(120).describe('要扫描的最大文件数'),
+    maxDepth: z.coerce.number().int().min(1).max(8).optional().default(4).describe('要扫描的最大目录深度'),
   });
 
   constructor(private options: WorkspaceToolOptions = {}) { super(); }

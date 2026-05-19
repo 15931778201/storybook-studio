@@ -31,6 +31,64 @@ export async function safeExecute(toolName: string, fn: () => Promise<ToolResult
   }
 }
 
+// 提取Zod参数的描述信息 - 重新实现
+function extractParameterInfo(zodSchema: any) {
+  const paramInfo: Record<string, { description: string; type: string; required: boolean }> = {};
+  
+  try {
+    // 检查是否是ZodObject
+    if (!zodSchema || !zodSchema._def || zodSchema._def.typeName !== 'ZodObject') {
+      return paramInfo;
+    }
+
+    // 获取shape - 可能是函数或对象
+    let shapeObj: Record<string, any> = {};
+    if (typeof zodSchema._def.shape === 'function') {
+      shapeObj = zodSchema._def.shape();
+    } else if (typeof zodSchema._def.shape === 'object') {
+      shapeObj = zodSchema._def.shape;
+    }
+
+    // 遍历每个参数
+    for (const [key, paramSchema] of Object.entries(shapeObj)) {
+      if (!paramSchema || typeof paramSchema !== 'object') {
+        continue;
+      }
+
+      let actualSchema = paramSchema as any;
+      let required = true;
+
+      // 处理可选参数 (ZodOptional)
+      if (actualSchema._def?.typeName === 'ZodOptional') {
+        required = false;
+        actualSchema = actualSchema._def.innerType;
+      }
+
+      // 获取类型名称
+      let typeName = 'any';
+      if (actualSchema._def?.typeName) {
+        typeName = actualSchema._def.typeName.replace('Zod', '').toLowerCase();
+      }
+
+      // 获取描述 - 这是最关键的部分
+      let description = key; // 默认使用key作为描述
+      if (actualSchema._def?.description) {
+        description = actualSchema._def.description;
+      }
+
+      paramInfo[key] = {
+        description,
+        type: typeName,
+        required
+      };
+    }
+  } catch (error) {
+    console.warn('Failed to extract parameter info from Zod schema:', error);
+  }
+
+  return paramInfo;
+}
+
 // 获取所有工具的定义（元数据）
 export function getToolDefinitions() {
   // 直接导入所有工具类并获取其静态属性
@@ -73,10 +131,14 @@ export function getToolDefinitions() {
       if (ToolClass) {
         // 创建一个实例来获取元数据（不执行实际功能）
         const instance = new ToolClass();
+        
+        // 提取参数信息
+        const parameterInfo = extractParameterInfo(instance.parameters);
+        
         tools.push({
           name: instance.name,
           description: instance.description,
-          parameters: instance.parameters,
+          parameters: parameterInfo,
           example: (instance as any).example || '',
           category: (instance as any).category || '通用'
         });
