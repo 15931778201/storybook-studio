@@ -5,7 +5,17 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { appendAuditLog } from '../utils/logger';
 import { resolveWorkspaceRoot, WorkspaceToolOptions } from './workspace';
-const execAsync = promisify(exec) as (command: string, options?: { shell?: boolean | string; timeout?: number; maxBuffer?: number }) => Promise<{ stdout: string; stderr: string }>;
+
+// 扩展execAsync的类型定义以支持cwd选项
+const execAsync = promisify(exec) as (
+  command: string, 
+  options?: { 
+    shell?: boolean | string; 
+    timeout?: number; 
+    maxBuffer?: number;
+    cwd?: string;
+  }
+) => Promise<{ stdout: string; stderr: string }>;
 
 function shellQuote(arg: string): string {
   if (/^[\w@%+,:;!~.\/=-]+$/.test(arg)) return arg;
@@ -14,32 +24,36 @@ function shellQuote(arg: string): string {
 
 export class BashTool extends Tool {
   name = 'bash';
-  description = '执行 Shell 命令（支持管道、重定向、变量）';
+  description = '在安全沙箱中执行 bash 命令';
   parameters = z.object({
-    command: z.string().describe('要执行的命令（推荐直接写完整 shell 命令，如 "ls -la | grep foo"）'),
-    args: z.array(z.string()).optional().default([]).describe('命令参数（可选，会自动追加到 command 后）'),
-    timeout: z.preprocess(
-      (val) => {
-        const num = Number(val);
-        if (isNaN(num) || num < 1000) return 30000;
-        if (num > 2_147_483_647) return 2_147_483_647;
-        return num;
-      },
-      z.number().int().min(1000).max(120_000).optional().default(30000)
-    ).describe('超时毫秒（1-120秒，默认30秒）'),
+    command: z.string().describe('要执行的 bash 命令'),
+    timeout: z.number().optional().default(30).describe('超时时间（秒）'),
   });
+  
+  // 自然语言示例：展示如何调用工具
+  example = `// 列出当前目录的文件
+{
+  "command": "ls -la"
+}
 
-  constructor(private options: WorkspaceToolOptions = {}) {
-    super();
-  }
+// 查看系统信息
+{
+  "command": "uname -a",
+  "timeout": 10
+}
 
-  protected async executeCore(validatedParams: unknown): Promise<ToolResult> {
-    const { command, args = [], timeout } = validatedParams as z.infer<typeof this.parameters>;
+// 搜索特定文件
+{
+  "command": "find . -name '*.ts' -type f"
+}`;
+
+  constructor(private options: WorkspaceToolOptions = {}) { super(); }
+
+  protected async executeCore(validatedParams: any) {
+    const { command, timeout } = validatedParams;
     const safeInternal = Math.min(Math.max(Number(timeout) || 30_000, 1000), 2_147_483_647);
 
-    const cmd = args.length > 0
-      ? `${command} ${args.map(shellQuote).join(' ')}`
-      : command;
+    const cmd = command;
     const risk = classifyCommandRisk(cmd);
 
     return safeExecute(
@@ -75,13 +89,12 @@ export class BashTool extends Tool {
             command: cmd,
             riskLevel: risk.riskLevel,
             requiresConfirmation: risk.requiresConfirmation,
-            exitCode: error.code,
             timestamp: new Date().toISOString(),
           });
-          return { success: true, output, metadata: risk };
+          return { success: false, output, metadata: risk };
         }
       },
-      { timeout: safeInternal + 5000, maxOutput: 10000 }
+      { timeout: safeInternal }
     );
   }
 }

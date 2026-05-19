@@ -5,36 +5,53 @@ import { restoreBackup } from '../utils/backup';
 import { generateUnifiedDiff } from '../utils/diff';
 import { appendAuditLog } from '../utils/logger';
 import { resolveWorkspacePath } from '../tools/workspace';
+import { StagedWriteManager } from '../core/write-protocol';
+
 export type PermissionLevel = 'default' | 'acceptEdits' | 'bypassPermissions' | 'readOnly';
 type OperationType = 'read' | 'write' | 'execute' | 'network';
 const MATRIX: Record<PermissionLevel, OperationType[]> = {
   readOnly: ['read'], default: ['read','write','execute'], acceptEdits: ['read','write','execute'], bypassPermissions: ['read','write','execute','network']
 };
+
 export class DiffUndoPolicy extends Policy {
   private currentLevel: PermissionLevel = 'default';
   private opCount = new Map<string, number>();
   private MAX = 100;
+  private stagedWriteManager: StagedWriteManager;
+
   constructor(private options: { backupDir?: string; autoConfirm?: boolean; workspaceRoot?: string } = {}) {
     super();
+    this.stagedWriteManager = new StagedWriteManager('.agent/staging');
   }
+
   setPermissionLevel(level: PermissionLevel) { this.currentLevel = level; this.opCount.clear(); }
+
   private classifyOp(toolName: string): OperationType {
     if (['read_file','grep','glob','list_skills'].includes(toolName)) return 'read';
     if (['write_file','edit_file', 'apply_patch'].includes(toolName)) return 'write';
     if (['bash','create_skill','delete_skill','run_skill','update_skill'].includes(toolName)) return 'execute';
     return 'network';
   }
+
   async preExecute(tool: any, params: any): Promise<PolicyResult> {
     const res = new PolicyResult();
     const op = this.classifyOp(tool.name);
     if (!MATRIX[this.currentLevel].includes(op)) { res.allowed = false; res.reason = `权限级别 ${this.currentLevel} 不允许 ${op} 操作`; return res; }
     const cnt = (this.opCount.get(tool.name) || 0) + 1; this.opCount.set(tool.name, cnt);
     if (cnt > this.MAX) { res.allowed = false; res.reason = '操作次数超限'; return res; }
+    
+    // 对于写入操作，总是生成diff并需要确认（除非autoConfirm）
     if (op === 'write' && this.currentLevel === 'default') {
       const diff = this.genDiff(tool, params);
       res.diff = diff;
       res.needApproval = !!diff && !this.options.autoConfirm;
+      
+      // 如果工具返回了stagedId，说明是staged write模式
+      if (params.stagedId) {
+        res.metadata = { stagedId: params.stagedId };
+      }
     }
+    
     if (tool.name === 'bash') {
       const risk = classifyCommandRisk(params?.command || '');
       res.metadata = {
@@ -48,6 +65,7 @@ export class DiffUndoPolicy extends Policy {
     }
     return res;
   }
+
   private genDiff(tool: any, params: any): string | null {
     if (tool.name === 'write_file' && params.filePath) {
       const fullPath = resolvePolicyPath(this.options.workspaceRoot, params.filePath);
@@ -76,6 +94,7 @@ export class DiffUndoPolicy extends Policy {
     }
     return null;
   }
+
   async postExecute(tool: any, params: any, result: any) {
     appendAuditLog({
       tool: tool.name,
@@ -84,6 +103,25 @@ export class DiffUndoPolicy extends Policy {
       sessionType: 'policy',
       timestamp: new Date().toISOString(),
     });
+    
+    // 如果是staged write结果，记录stagedId
+    if (result.metadata?.stagedIds) {
+      for (const stagedId of result.metadata.stagedIds) {
+        appendAuditLog({
+          id: `audit-${Date.now()}`,
+          sessionId: params.sessionId || '',
+          toolName: tool.name,
+          writeProtocol: 'apply_patch',
+          filePath: params.filePath || '',
+          action: 'stage',
+          diff: result.metadata.diff || '',
+          backupPath: result.metadata.backupPath || '',
+          status: 'pending',
+          timestamp: new Date().toISOString(),
+          metadata: { stagedId },
+        });
+      }
+    }
   }
 
   async undo(filePath: string): Promise<string> {
@@ -106,6 +144,17 @@ export class DiffUndoPolicy extends Policy {
     if (!fs.existsSync('.agent/audit.jsonl')) return [];
     const lines = fs.readFileSync('.agent/audit.jsonl', 'utf-8').split('\n').filter(Boolean);
     return lines.slice(-limit).map((l) => JSON.parse(l));
+  }
+  
+  // 新增：处理staged write的确认
+  async handleStagedWriteConfirmation(stagedId: string, approved: boolean): Promise<boolean> {
+    if (approved) {
+      const result = await this.stagedWriteManager.commit(stagedId);
+      return result.success;
+    } else {
+      const result = await this.stagedWriteManager.rollback(stagedId);
+      return result.success;
+    }
   }
 }
 

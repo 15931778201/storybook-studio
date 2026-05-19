@@ -19,6 +19,9 @@ export { ApplyPatchTool } from './tools/apply-patch';
 export { JsonQueryTool } from './tools/json-query';
 export { GitTool } from './tools/git';
 export { RepoMapTool } from './tools/repo-map';
+export { FileTreeSummaryTool } from './tools/file-tree-summary';
+export { GitContextTool } from './tools/git-context';
+export { TsSymbolsTool } from './tools/ts-symbols';
 
 // ── 上下文策略 ──
 export { SlidingWindowContextManager } from './context/sliding-window';

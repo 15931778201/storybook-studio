@@ -1,4 +1,3 @@
-
 export { ReadFileTool } from './read-file';
 export { WriteFileTool } from './write-file';
 export { BashTool } from './bash';
@@ -13,4 +12,8 @@ export { GitTool } from './git';
 export { NotificationTool } from './notification';
 export { ArchiveTool } from './archive';
 export { RepoMapTool } from './repo-map';
+export { FileTreeSummaryTool } from './file-tree-summary';
+export { GitContextTool } from './git-context';
+export { TsSymbolsTool } from './ts-symbols';
+export { CommitStagedWriteTool } from './commit-staged-write';
 // export { SkillDistillerTool } from './skill-distiller';

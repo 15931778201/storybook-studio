@@ -648,6 +648,9 @@ export class DefaultStepPipeline extends StepPipeline {
         return false;
       }
       args = filteredArgs;
+      
+      // 如果工具结果包含stagedIds，说明是staged write模式，需要提交暂存的操作
+      // 注意：这里我们会在执行工具后处理stagedIds
     }
 
     // 执行工具
@@ -655,6 +658,42 @@ export class DefaultStepPipeline extends StepPipeline {
       const result = await tool.execute(args);
       console.log(`✅ ${tool.name}: ${result.output.slice(0, 50)}`);
       await this.config.policy.postExecute(tool, args, result);
+      
+      // 检查是否是staged write模式的结果
+      if (result.success && result.metadata?.stagedIds && result.metadata.pendingConfirmation) {
+        // 这是staged write的暂存结果，等待用户确认后再提交
+        // 用户已经通过上面的确认流程批准了操作，现在提交暂存的操作
+        const stagedIds = result.metadata.stagedIds as string[];
+        const commitResults = [];
+        
+        for (const stagedId of stagedIds) {
+          try {
+            const commitResult = await (this.config.policy as any).handleStagedWriteConfirmation(stagedId, true);
+            commitResults.push(commitResult);
+          } catch (err: any) {
+            console.error(`提交暂存操作失败: ${stagedId}`, err);
+            commitResults.push(false);
+          }
+        }
+        
+        // 如果有任何提交失败，标记为错误
+        if (commitResults.some(r => !r)) {
+          const errorMsg = `部分暂存操作提交失败`;
+          this.addToolMessage(messages, tc.id, errorMsg);
+          this.eventBus.emit(`message-${this.sessionId}`, {
+            type: 'tool-end',
+            toolName: tool.name,
+            status: 'error',
+            result: errorMsg,
+          });
+          return false;
+        }
+        
+        // 更新结果，移除pending状态
+        result.metadata.pendingConfirmation = false;
+        result.metadata.committed = true;
+      }
+      
       const currentChange = buildAppliedChange(tool.name, result.metadata, options.changeKind ?? 'initial');
       if (currentChange && options.changeCollector) {
         options.changeCollector.push(currentChange);

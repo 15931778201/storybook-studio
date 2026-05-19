@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Alert, Button, Collapse, Modal, Progress, Space, Tabs, Tag, Typography } from 'antd';
 import { parseDiffBundle, parseUnifiedDiff } from '../utils/diff-presentation';
-import { buildSelectionStatus, formatDiffContentForDisplay } from '../utils/confirm-presentation';
+import { buildSelectionStatus, buildFileManifestGroups, formatDiffContentForDisplay } from '../utils/confirm-presentation';
 
 const DiffEditor = lazy(() => import('./DiffEditor'));
 
@@ -54,34 +54,79 @@ export default function ConfirmDialog({
       styles={{ body: { paddingTop: 12 } }}
     >
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        {/* 工具标签行 */}
         <Space wrap size={[8, 8]}>
           <Tag color="blue">{toolName}</Tag>
           <Tag style={{ maxWidth: 620, overflow: 'hidden', textOverflow: 'ellipsis' }}>
             <Typography.Text code style={{ margin: 0 }}>{bundle.files.length > 1 ? `${bundle.files.length} files` : activeFile.filePath}</Typography.Text>
           </Tag>
-          <Tag color="cyan">{`新增 ${selectionStatus.acceptedGroups.added.length}/${selectionStatus.rejectedGroups.added.length}`}</Tag>
-          <Tag color="volcano">{`删除 ${selectionStatus.acceptedGroups.deleted.length}/${selectionStatus.rejectedGroups.deleted.length}`}</Tag>
-          <Tag color="gold">{`修改 ${selectionStatus.acceptedGroups.modified.length}/${selectionStatus.rejectedGroups.modified.length}`}</Tag>
           <Tag color="green">+{bundle.totalAdditions}</Tag>
           <Tag color="red">-{bundle.totalDeletions}</Tag>
-          <Tag color={nextSummary.accepted === nextSummary.total ? 'blue' : 'gold'}>{`已选 ${nextSummary.accepted}/${nextSummary.total}`}</Tag>
         </Space>
 
-        {bundle.files.length > 1 ? (
-          <Space direction="vertical" size={8} style={{ width: '100%' }}>
-            <Typography.Text strong>文件清单</Typography.Text>
-            <Space wrap size={[8, 8]}>
-              {bundle.files.map((file) => (
-                <Tag
-                  key={file.filePath}
-                  color={file.changeType === 'added' ? 'green' : file.changeType === 'deleted' ? 'red' : 'blue'}
-                >
-                  {`${file.changeType === 'added' ? '新增' : file.changeType === 'deleted' ? '删除' : '修改'} ${file.filePath}`}
-                </Tag>
-              ))}
-            </Space>
+        {/* 三态汇总进度条：待处理 / 已接受 / 已拒绝 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: '#f0f0f0' }}>
+            {selectionStatus.accepted > 0 && (
+              <div style={{ flex: selectionStatus.accepted, background: '#52c41a', transition: 'flex 0.3s' }} />
+            )}
+            {selectionStatus.rejected > 0 && (
+              <div style={{ flex: selectionStatus.rejected, background: '#ff4d4f', transition: 'flex 0.3s' }} />
+            )}
+            {selectionStatus.pending > 0 && (
+              <div style={{ flex: selectionStatus.pending, background: '#1677ff', transition: 'flex 0.3s' }} />
+            )}
+          </div>
+          <Space size={12}>
+            <Tag color="blue">{`待处理 ${selectionStatus.pending}`}</Tag>
+            <Tag color="green">{`已接受 ${selectionStatus.accepted}`}</Tag>
+            <Tag color="red">{`已拒绝 ${selectionStatus.rejected}`}</Tag>
           </Space>
-        ) : null}
+        </div>
+
+        {/* 顶部独立文件清单摘要区（分组卡片） */}
+        {bundle.files.length > 1 && (() => {
+          const manifestGroups = buildFileManifestGroups(
+            bundle.files.map((file) => ({
+              filePath: file.filePath,
+              changeType: file.changeType || 'modified',
+              additions: file.additions,
+              deletions: file.deletions,
+            })),
+          );
+          return (
+            <div style={{
+              border: '1px solid #e8e8e8',
+              borderRadius: 8,
+              padding: '12px 16px',
+              background: '#fafafa',
+            }}>
+              <Typography.Text strong style={{ marginBottom: 8, display: 'block' }}>变更文件清单</Typography.Text>
+              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                {manifestGroups.map((group) => (
+                  <div key={group.changeType}>
+                    <Tag color={group.color} style={{ marginBottom: 4 }}>
+                      {`${group.label} ${group.files.length} 个文件`}
+                    </Tag>
+                    <div style={{ paddingLeft: 8 }}>
+                      {group.files.map((file) => (
+                        <div key={file.filePath} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
+                          <Typography.Text code style={{ fontSize: 12 }}>{file.filePath}</Typography.Text>
+                          {file.additions !== undefined && file.deletions !== undefined && (
+                            <Space size={4}>
+                              <Tag color="green" style={{ fontSize: 11, lineHeight: '16px', padding: '0 4px', margin: 0 }}>+{file.additions}</Tag>
+                              <Tag color="red" style={{ fontSize: 11, lineHeight: '16px', padding: '0 4px', margin: 0 }}>-{file.deletions}</Tag>
+                            </Space>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </Space>
+            </div>
+          );
+        })()}
 
         {bundle.isEmpty ? (
           <Alert

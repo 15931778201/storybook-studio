@@ -8,8 +8,10 @@ import {
   CreateSkillTool,
   DiffUndoPolicy,
   EditFileTool,
+  FileTreeSummaryTool,
   FileMemory,
   GitTool,
+  GitContextTool,
   GlobTool,
   GrepTool,
   JsonQueryTool,
@@ -18,6 +20,7 @@ import {
   RepoMapTool,
   SkillCallerTool,
   SlidingWindowContextManager,
+  TsSymbolsTool,
   WriteFileTool,
 } from '../../src';
 import { changelogStore, knowledgeBaseManager, mcpClient, modelConfigStore, roleStore, skillManager } from '../context';
@@ -37,6 +40,9 @@ export function buildChatTools(workspaceRoot = '.') {
     new JsonQueryTool({ workspaceRoot }),
     new GitTool({ workspaceRoot }),
     new RepoMapTool({ workspaceRoot }),
+    new FileTreeSummaryTool({ workspaceRoot }),
+    new GitContextTool({ workspaceRoot }),
+    new TsSymbolsTool({ workspaceRoot }),
   ];
 
   return [

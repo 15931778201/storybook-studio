@@ -117,6 +117,14 @@ export function getToolDefinitions() {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const GitTool = require('../tools/git').GitTool;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const RepoMapTool = require('../tools/repo-map').RepoMapTool;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const FileTreeSummaryTool = require('../tools/file-tree-summary').FileTreeSummaryTool;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const GitContextTool = require('../tools/git-context').GitContextTool;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const TsSymbolsTool = require('../tools/ts-symbols').TsSymbolsTool;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const NotificationTool = require('../tools/notification').NotificationTool;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const ArchiveTool = require('../tools/archive').ArchiveTool;
@@ -124,7 +132,8 @@ export function getToolDefinitions() {
     const toolClasses = [
       ReadFileTool, WriteFileTool, BashTool, GrepTool, GlobTool,
       WebFetchTool, WebSearchTool, EditFileTool, JsonQueryTool,
-      GitTool, NotificationTool, ArchiveTool
+      GitTool, RepoMapTool, FileTreeSummaryTool, GitContextTool,
+      TsSymbolsTool, NotificationTool, ArchiveTool
     ];
     
     for (const ToolClass of toolClasses) {

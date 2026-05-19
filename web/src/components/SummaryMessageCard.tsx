@@ -1,10 +1,23 @@
 import { Collapse, Space, Tag, Tabs, Typography } from 'antd';
 import DiffEditor from './DiffEditor';
 import { buildSummarySections } from '../utils/summary-presentation';
-import { formatDiffContentForDisplay, shouldRenderSummaryNarrative } from '../utils/confirm-presentation';
+import { buildFileManifestGroups, formatDiffContentForDisplay, shouldRenderSummaryNarrative } from '../utils/confirm-presentation';
 
 export default function SummaryMessageCard({ summary }: { summary: any }) {
   const sections = buildSummarySections(summary);
+
+  // 收集所有变更文件用于顶部摘要区
+  const allChangeFiles = (sections || []).flatMap(
+    (section) => (section.changes || []).flatMap(
+      (change) => change.bundle.files.map((file) => ({
+        filePath: file.filePath,
+        changeType: file.changeType || 'modified',
+        additions: file.additions,
+        deletions: file.deletions,
+      })),
+    ),
+  );
+  const manifestGroups = buildFileManifestGroups(allChangeFiles);
 
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -19,6 +32,40 @@ export default function SummaryMessageCard({ summary }: { summary: any }) {
           </Tag>
         ) : null}
       </Space>
+
+      {/* 顶部独立文件清单摘要区 */}
+      {manifestGroups.length > 0 && (
+        <div style={{
+          border: '1px solid #e8e8e8',
+          borderRadius: 8,
+          padding: '12px 16px',
+          background: '#fafafa',
+        }}>
+          <Typography.Text strong style={{ marginBottom: 8, display: 'block' }}>变更文件清单</Typography.Text>
+          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+            {manifestGroups.map((group) => (
+              <div key={group.changeType}>
+                <Tag color={group.color} style={{ marginBottom: 4 }}>
+                  {`${group.label} ${group.files.length} 个文件`}
+                </Tag>
+                <div style={{ paddingLeft: 8 }}>
+                  {group.files.map((file) => (
+                    <div key={file.filePath} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
+                      <Typography.Text code style={{ fontSize: 12 }}>{file.filePath}</Typography.Text>
+                      {file.additions !== undefined && file.deletions !== undefined && (
+                        <Space size={4}>
+                          <Tag color="green" style={{ fontSize: 11, lineHeight: '16px', padding: '0 4px', margin: 0 }}>+{file.additions}</Tag>
+                          <Tag color="red" style={{ fontSize: 11, lineHeight: '16px', padding: '0 4px', margin: 0 }}>-{file.deletions}</Tag>
+                        </Space>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </Space>
+        </div>
+      )}
 
       <Collapse
         defaultActiveKey={sections.map((section) => section.key)}
