@@ -13,6 +13,8 @@ import CodeBlock from './CodeBlock';
 import EmptyState from './EmptyState';
 import ImageUpload from './ImageUpload';
 import CollapsibleThinkingPanel from './CollapsibleThinkingPanel';
+import SummaryMessageCard from './SummaryMessageCard';
+import { shouldRenderSummaryNarrative } from './SummaryMessageCard';
 import { getBubbleRole, getMessagePlacement, shouldRenderMessage } from '../utils/chat-presentation';
 
 export default function ChatLayout() {
@@ -84,6 +86,35 @@ export default function ChatLayout() {
             original={msg.metadata?.original || ''}
             modified={msg.metadata?.modified || ''}
           />
+        );
+
+      case 'summary':
+        return (
+          <div style={{ overflow: 'auto' }}>
+            <SummaryMessageCard summary={msg.metadata?.summary || msg.metadata || { appliedFiles: [], verification: { commands: [], passed: true, output: '' } }} />
+            {shouldRenderSummaryNarrative(msg.content) ? (
+              <div style={{ marginTop: 12 }}>
+                <XMarkdown
+                  content={String(msg.content)}
+                  components={{
+                    code({ inline, className, children }: any) {
+                      if (!inline && className) {
+                        return (
+                          <CodeBlock language={className.replace('language-', '')}>
+                            {String(children).replace(/\n$/, '')}
+                          </CodeBlock>
+                        );
+                      }
+                      return <code className={className}>{children}</code>;
+                    },
+                  }}
+                />
+              </div>
+            ) : null}
+            {steps.length > 0 && (
+              <CollapsibleThinkingPanel steps={steps} isRequesting={isRequesting} />
+            )}
+          </div>
         );
 
       default:

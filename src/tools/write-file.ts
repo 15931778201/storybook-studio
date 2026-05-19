@@ -21,11 +21,21 @@ export class WriteFileTool extends Tool {
     const { filePath, content } = validatedParams;
     return safeExecute(this.name, async () => {
       const fullPath = this.resolvePath(filePath);
-      let diff: string | null = null;
       if (fs.existsSync(fullPath)) {
         const old = fs.readFileSync(fullPath, 'utf8');
-        diff = generateUnifiedDiff(old, content, filePath);
+        if (old === content) {
+          return {
+            success: true,
+            output: `文件 ${filePath} 内容未变化`,
+            metadata: { changedFiles: [] },
+          };
+        }
+        return {
+          success: false,
+          output: `文件 ${filePath} 已存在；修改现有文件请使用 apply_patch`,
+        };
       }
+      let diff: string | null = null;
       const backupPath = createBackup(fullPath);
       fs.writeFileSync(fullPath, content, 'utf8');
       appendAuditLog({ tool: this.name, filePath, backupPath, diff, timestamp: new Date().toISOString() });

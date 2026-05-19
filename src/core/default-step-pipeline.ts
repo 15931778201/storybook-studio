@@ -11,6 +11,12 @@ import type { Message, ToolCall } from '../types/message';
 import type { ConfirmRequest } from '../types/confirm';
 import { RoleProfile } from '../types/role';
 import { buildSystemPrompt } from '../context/system-prompt';
+import { runAutoVerification, summarizeAppliedFiles } from './auto-verification';
+import { buildConfirmPreview, filterToolArgsByDecision } from './confirm-selection';
+import { buildPatchArgsForWrite, shouldPromoteWriteToPatch } from './write-protocol';
+import { buildFinalAnswerFromSummary } from './final-answer';
+import fs from 'fs';
+import { resolveWorkspacePath } from '../tools/workspace';
 
 // 判断两个工具调用结果是否相似（用于检测重复调用）
 function outputSimilar(a: string, b: string): boolean {
@@ -534,7 +540,16 @@ export class DefaultStepPipeline extends StepPipeline {
   /**
    * 执行单个工具调用，返回 true 表示应该提前终止循环（例如检测到重复调用或信息足够）
    */
-  protected async executeSingleToolCall(tc: ToolCall, messages: Message[]): Promise<boolean> {
+  protected async executeSingleToolCall(
+    tc: ToolCall,
+    messages: Message[],
+    options: {
+      suppressVerification?: boolean;
+      repairDepth?: number;
+      changeCollector?: Array<{ kind: 'initial' | 'repair'; toolName: string; changedFiles: string[]; diff?: string }>;
+      changeKind?: 'initial' | 'repair';
+    } = {},
+  ): Promise<boolean> {
     let args: any;
     try {
       args = JSON.parse(tc.function.arguments);
@@ -544,7 +559,22 @@ export class DefaultStepPipeline extends StepPipeline {
     }
 
     const allTools = this.collectAllTools();
-    const tool = allTools.find((t: any) => t.name === tc.function.name);
+    let tool = allTools.find((t: any) => t.name === tc.function.name);
+
+    if (tool?.name === 'write_file') {
+      const promoted = this.promoteWriteToPatch(allTools, args, tool);
+      if (promoted) {
+        tool = promoted.tool;
+        args = promoted.args;
+      }
+    }
+    if (tool?.name === 'edit_file') {
+      const promoted = this.promoteEditToPatch(allTools, args, tool);
+      if (promoted) {
+        tool = promoted.tool;
+        args = promoted.args;
+      }
+    }
 
     // 发送 tool-start 事件
     this.eventBus.emit(`message-${this.sessionId}`, {
@@ -595,14 +625,18 @@ export class DefaultStepPipeline extends StepPipeline {
 
     // 需要确认
     if (policyResult.needApproval && policyResult.diff) {
-      const approved = await this.waitForConfirmation({
+      const preview = buildConfirmPreview(tool.name, args, policyResult.diff);
+      const decision = await this.waitForConfirmation({
         sessionId: this.sessionId,
         toolCallId: tc.id,
         toolName: tool.name,
         args,
         diff: policyResult.diff,
+        files: preview.files,
+        summary: preview.summary,
       });
-      if (!approved) {
+      const filteredArgs = filterToolArgsByDecision(tool.name, args, decision);
+      if (!decision.approved || !filteredArgs) {
         const denyMsg = '用户拒绝了修改';
         this.addToolMessage(messages, tc.id, denyMsg);
         this.eventBus.emit(`message-${this.sessionId}`, {
@@ -613,6 +647,7 @@ export class DefaultStepPipeline extends StepPipeline {
         });
         return false;
       }
+      args = filteredArgs;
     }
 
     // 执行工具
@@ -620,6 +655,10 @@ export class DefaultStepPipeline extends StepPipeline {
       const result = await tool.execute(args);
       console.log(`✅ ${tool.name}: ${result.output.slice(0, 50)}`);
       await this.config.policy.postExecute(tool, args, result);
+      const currentChange = buildAppliedChange(tool.name, result.metadata, options.changeKind ?? 'initial');
+      if (currentChange && options.changeCollector) {
+        options.changeCollector.push(currentChange);
+      }
 
       this.addToolMessage(messages, tc.id, result.output);
       this.eventBus.emit(`message-${this.sessionId}`, {
@@ -628,6 +667,96 @@ export class DefaultStepPipeline extends StepPipeline {
         status: result.success ? 'done' : 'error',
         result: result.output,
       });
+
+      const userMsg = messages.find(m => m.role === 'user');
+
+      if (result.success && ['write_file', 'edit_file', 'apply_patch'].includes(tool.name) && !options.suppressVerification) {
+        const changedFiles = summarizeAppliedFiles(((result.metadata?.changedFiles as string[] | undefined) || []).filter(Boolean));
+        let verification = await this.runVerification(changedFiles);
+        const initialChanges = currentChange ? [currentChange] : [];
+        this.eventBus.emit(`message-${this.sessionId}`, {
+          type: 'test-result',
+          summary: verification.passed ? '自动测试通过' : '自动测试失败',
+          command: verification.commands.join(' && '),
+          output: verification.output,
+        });
+
+        let repairSummary: { attempted: boolean; success: boolean; changes: Array<{ kind: 'initial' | 'repair'; toolName: string; changedFiles: string[]; diff?: string }> } | undefined;
+        if (!verification.passed) {
+          const repaired = await this.attemptAutoRepair(messages, changedFiles, verification, options.repairDepth ?? 0);
+          if (repaired.attempted) {
+            verification = repaired.verification;
+            repairSummary = {
+              attempted: true,
+              success: repaired.verification.passed,
+              changes: repaired.changes,
+            };
+            this.eventBus.emit(`message-${this.sessionId}`, {
+              type: 'test-result',
+              summary: verification.passed ? '自动修复后二次测试通过' : '自动修复后二次测试失败',
+              command: verification.commands.join(' && '),
+              output: verification.output,
+            });
+          }
+        }
+
+        this.eventBus.emit(`message-${this.sessionId}`, {
+          type: 'summary-ready',
+          summary: {
+            appliedFiles: changedFiles,
+            changes: initialChanges,
+            repair: repairSummary,
+            verification,
+          },
+        });
+        const finalSummary = {
+          appliedFiles: changedFiles,
+          changes: initialChanges,
+          repair: repairSummary,
+          verification,
+        };
+        const finalAnswer = buildFinalAnswerFromSummary(finalSummary, userMsg?.content || '');
+        messages.push({
+          role: 'assistant',
+          content: finalAnswer,
+        } as any);
+        this.eventBus.emit(`message-${this.sessionId}`, {
+          type: 'final',
+          content: finalAnswer,
+        });
+        return true;
+      }
+
+      if (!result.success && ['write_file', 'edit_file', 'apply_patch'].includes(tool.name) && !options.suppressVerification) {
+        const failureSummary = {
+          appliedFiles: [],
+          changes: currentChange ? [currentChange] : [],
+          failure: {
+            rollbackPerformed: Boolean(result.metadata?.rollbackPerformed),
+            rolledBackFiles: ((result.metadata?.rolledBackFiles as string[] | undefined) || []),
+            conflict: result.metadata?.conflict,
+          },
+          verification: {
+            commands: [] as string[],
+            passed: false,
+            output: '未执行测试',
+          },
+        };
+        this.eventBus.emit(`message-${this.sessionId}`, {
+          type: 'summary-ready',
+          summary: failureSummary,
+        });
+        const finalAnswer = buildFinalAnswerFromSummary(failureSummary, userMsg?.content || '');
+        messages.push({
+          role: 'assistant',
+          content: finalAnswer,
+        } as any);
+        this.eventBus.emit(`message-${this.sessionId}`, {
+          type: 'final',
+          content: finalAnswer,
+        });
+        return true;
+      }
 
       // ----- 重复调用检测 -----
       const callKey = `${tool.name}:${JSON.stringify(args)}`;
@@ -648,7 +777,6 @@ export class DefaultStepPipeline extends StepPipeline {
       this.lastToolCalls.set(callKey, { args: JSON.stringify(args), output: result.output });
 
       // ----- 简单查询提前终止 -----
-      const userMsg = messages.find(m => m.role === 'user');
       if (isSufficientForQuery(userMsg?.content || '', result.output)) {
         // 将工具输出包装成最终答案，避免继续循环
         messages.push({
@@ -681,20 +809,182 @@ export class DefaultStepPipeline extends StepPipeline {
     messages.push({ role: 'tool', content, tool_call_id: toolCallId } as any);
   }
 
-  protected waitForConfirmation(request: ConfirmRequest): Promise<boolean> {
+  protected async runVerification(changedFiles: string[]) {
+    return runAutoVerification(changedFiles, (this.config.policy as any)?.options?.workspaceRoot);
+  }
+
+  protected promoteWriteToPatch(allTools: any[], args: Record<string, any>, writeTool: any) {
+    if (typeof args.filePath !== 'string' || typeof args.content !== 'string') return null;
+    const resolvePath = typeof writeTool.resolvePath === 'function'
+      ? writeTool.resolvePath.bind(writeTool)
+      : null;
+    if (!resolvePath) return null;
+
+    const fullPath = resolvePath(args.filePath);
+    if (!fs.existsSync(fullPath)) return null;
+
+    const before = fs.readFileSync(fullPath, 'utf8');
+    if (!shouldPromoteWriteToPatch(before, args.content)) return null;
+
+    const applyPatchTool = allTools.find((candidate: any) => candidate.name === 'apply_patch');
+    if (!applyPatchTool) return null;
+
+    return {
+      tool: applyPatchTool,
+      args: buildPatchArgsForWrite(args.filePath, before, args.content),
+    };
+  }
+
+  protected promoteEditToPatch(allTools: any[], args: Record<string, any>, editTool: any) {
+    if (typeof args.filePath !== 'string' || typeof args.search !== 'string' || typeof args.replace !== 'string' || args.isRegex) return null;
+    const resolvePath = typeof editTool.options?.workspaceRoot !== 'undefined'
+      ? (filePath: string) => resolveWorkspacePath((editTool as any).options?.workspaceRoot, filePath)
+      : null;
+    const fullPath = resolvePath ? resolvePath(args.filePath) : resolveWorkspacePath(undefined, args.filePath);
+    if (!fs.existsSync(fullPath)) return null;
+    const before = fs.readFileSync(fullPath, 'utf8');
+    if (!before.includes(args.search)) return null;
+
+    const applyPatchTool = allTools.find((candidate: any) => candidate.name === 'apply_patch');
+    if (!applyPatchTool) return null;
+
+    return {
+      tool: applyPatchTool,
+      args: {
+        patches: [
+          {
+            filePath: args.filePath,
+            search: args.search,
+            replace: args.replace,
+          },
+        ],
+      },
+    };
+  }
+
+  protected async attemptAutoRepair(
+    messages: Message[],
+    changedFiles: string[],
+    verification: { commands: string[]; passed: boolean; output: string },
+    repairDepth: number,
+  ): Promise<{
+    attempted: boolean;
+    verification: { commands: string[]; passed: boolean; output: string };
+    changes: Array<{ kind: 'initial' | 'repair'; toolName: string; changedFiles: string[]; diff?: string }>;
+  }> {
+    if (repairDepth >= 1) {
+      this.eventBus.emit(`message-${this.sessionId}`, {
+        type: 'repair-skipped',
+        output: '已达到自动修复重试上限',
+      });
+      return { attempted: false, verification, changes: [] };
+    }
+
+    this.eventBus.emit(`message-${this.sessionId}`, {
+      type: 'repair-start',
+      command: verification.commands.join(' && '),
+      changedFiles,
+      output: verification.output,
+    });
+
+    const allTools = this.collectAllTools();
+    const toolsDef = allTools.map((t: any) => ({
+      type: 'function' as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: zodToJsonSchema(t.parameters),
+      },
+    }));
+
+    const repairPrompt: Message = {
+      role: 'system',
+      content: [
+        '你正在执行自动修复流程。',
+        `失败的验证命令: ${verification.commands.join(' && ') || 'unknown'}`,
+        `相关文件: ${changedFiles.join(', ') || 'unknown'}`,
+        '请只通过代码工具修复失败原因，然后停止继续说明。',
+        `失败输出:\n${verification.output}`,
+      ].join('\n\n'),
+    };
+
+    let response;
+    try {
+      response = await this.callModel([repairPrompt, ...messages], toolsDef);
+    } catch (err: any) {
+      this.eventBus.emit(`message-${this.sessionId}`, {
+        type: 'repair-skipped',
+        output: `自动修复调用失败: ${err.message}`,
+      });
+      return { attempted: false, verification, changes: [] };
+    }
+
+    const assistantMsg = response.choices?.[0]?.message;
+    let repairToolCalls: ToolCall[] = [];
+    if (assistantMsg?.tool_calls?.length) {
+      repairToolCalls = this.parseToolCalls(assistantMsg.tool_calls);
+    } else if (assistantMsg?.content) {
+      const textToolCall = parseToolCallFromText(assistantMsg.content);
+      if (textToolCall) {
+        repairToolCalls = [{
+          id: `repair_tc_${Date.now()}`,
+          type: 'function',
+          function: {
+            name: textToolCall.name,
+            arguments: textToolCall.arguments,
+          },
+        }];
+      }
+    }
+
+    if (repairToolCalls.length === 0) {
+      this.eventBus.emit(`message-${this.sessionId}`, {
+        type: 'repair-skipped',
+        output: assistantMsg?.content || '模型未给出可执行的修复工具调用',
+      });
+      return { attempted: false, verification, changes: [] };
+    }
+
+    const repairChanges: Array<{ kind: 'initial' | 'repair'; toolName: string; changedFiles: string[]; diff?: string }> = [];
+    for (const repairCall of repairToolCalls) {
+      await this.executeSingleToolCall(repairCall, messages, {
+        suppressVerification: true,
+        repairDepth: repairDepth + 1,
+        changeCollector: repairChanges,
+        changeKind: 'repair',
+      });
+    }
+
+    const rerunVerification = await this.runVerification(changedFiles);
+
+    this.eventBus.emit(`message-${this.sessionId}`, {
+      type: 'repair-end',
+      success: rerunVerification.passed,
+      output: verification.output,
+      rerunOutput: rerunVerification.output,
+    });
+
+    return {
+      attempted: true,
+      verification: rerunVerification,
+      changes: repairChanges,
+    };
+  }
+
+  protected waitForConfirmation(request: ConfirmRequest): Promise<{ approved: boolean; selectedFiles?: Record<string, boolean> }> {
     const CONFIRM_TIMEOUT = 30000;
     return new Promise((resolve) => {
       const timeoutHandle = setTimeout(() => {
         this.eventBus.off('confirm-response', handler);
         console.warn(`⚠️ 确认超时，自动拒绝: ${request.toolName}`);
-        resolve(false);
+        resolve({ approved: false });
       }, CONFIRM_TIMEOUT);
 
-      const handler = (data: { sessionId: string; approved: boolean }) => {
+      const handler = (data: { sessionId: string; approved: boolean; selectedFiles?: Record<string, boolean> }) => {
         if (data.sessionId === this.sessionId) {
           clearTimeout(timeoutHandle);
           this.eventBus.off('confirm-response', handler);
-          resolve(data.approved);
+          resolve({ approved: data.approved, selectedFiles: data.selectedFiles });
         }
       };
 
@@ -702,4 +992,19 @@ export class DefaultStepPipeline extends StepPipeline {
       this.eventBus.emit('confirm-request', request);
     });
   }
+}
+
+function buildAppliedChange(
+  toolName: string,
+  metadata: Record<string, unknown> | undefined,
+  kind: 'initial' | 'repair',
+) {
+  const changedFiles = ((metadata?.changedFiles as string[] | undefined) || []).filter(Boolean);
+  if (changedFiles.length === 0) return null;
+  return {
+    kind,
+    toolName,
+    changedFiles,
+    diff: typeof metadata?.diff === 'string' && metadata.diff.trim() ? metadata.diff : undefined,
+  };
 }

@@ -24,7 +24,7 @@ export async function safeExecute(toolName: string, fn: () => Promise<ToolResult
       fn(),
       new Promise<ToolResult>((_, reject) => setTimeout(() => reject(new Error(`工具 ${toolName} 执行超时(${timeoutMs}ms)`)), timeoutMs))
     ]);
-    return { ...result, success: true, output: result.output.slice(0, maxOutput) };
+    return { ...result, output: result.output.slice(0, maxOutput) };
   } catch (err: any) {
     if (options?.fallback) return options.fallback();
     return { success: false, output: `[${toolName} 执行失败] ${err.message}` };

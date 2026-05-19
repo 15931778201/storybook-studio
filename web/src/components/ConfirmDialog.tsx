@@ -1,6 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Alert, Button, Collapse, Modal, Progress, Space, Tabs, Tag, Typography } from 'antd';
 import { parseDiffBundle, parseUnifiedDiff } from '../utils/diff-presentation';
+import { buildSelectionStatus, formatDiffContentForDisplay } from '../utils/confirm-presentation';
 
 const DiffEditor = lazy(() => import('./DiffEditor'));
 
@@ -26,16 +27,17 @@ export default function ConfirmDialog({
   const [selectedFiles, setSelectedFiles] = useState<Record<string, boolean>>(() =>
     Object.fromEntries((files || bundle.files).map((file: any) => [file.filePath, file.accepted ?? true])),
   );
-  const nextSummary = useMemo(() => {
-    const acceptedCount = Object.values(selectedFiles).filter(Boolean).length;
-    return {
-      total: summary?.total ?? bundle.files.length,
-      accepted: acceptedCount,
-      added: summary?.added ?? bundle.fileSummary.added,
-      deleted: summary?.deleted ?? bundle.fileSummary.deleted,
-      modified: summary?.modified ?? bundle.fileSummary.modified,
-    };
-  }, [bundle.fileSummary.added, bundle.fileSummary.deleted, bundle.fileSummary.modified, bundle.files.length, selectedFiles, summary]);
+  const selectionStatus = useMemo(
+    () => buildSelectionStatus((files || bundle.files).map((file: any) => ({ ...file, accepted: file.accepted ?? true })), selectedFiles),
+    [bundle.files, files, selectedFiles],
+  );
+  const nextSummary = useMemo(() => ({
+    total: summary?.total ?? bundle.files.length,
+    accepted: selectionStatus.accepted,
+    added: summary?.added ?? bundle.fileSummary.added,
+    deleted: summary?.deleted ?? bundle.fileSummary.deleted,
+    modified: summary?.modified ?? bundle.fileSummary.modified,
+  }), [bundle.fileSummary.added, bundle.fileSummary.deleted, bundle.fileSummary.modified, bundle.files.length, selectionStatus.accepted, summary]);
 
   return (
     <Modal
@@ -57,13 +59,29 @@ export default function ConfirmDialog({
           <Tag style={{ maxWidth: 620, overflow: 'hidden', textOverflow: 'ellipsis' }}>
             <Typography.Text code style={{ margin: 0 }}>{bundle.files.length > 1 ? `${bundle.files.length} files` : activeFile.filePath}</Typography.Text>
           </Tag>
+          <Tag color="cyan">{`新增 ${selectionStatus.acceptedGroups.added.length}/${selectionStatus.rejectedGroups.added.length}`}</Tag>
+          <Tag color="volcano">{`删除 ${selectionStatus.acceptedGroups.deleted.length}/${selectionStatus.rejectedGroups.deleted.length}`}</Tag>
+          <Tag color="gold">{`修改 ${selectionStatus.acceptedGroups.modified.length}/${selectionStatus.rejectedGroups.modified.length}`}</Tag>
           <Tag color="green">+{bundle.totalAdditions}</Tag>
           <Tag color="red">-{bundle.totalDeletions}</Tag>
-          <Tag>{`新增 ${nextSummary.added}`}</Tag>
-          <Tag>{`删除 ${nextSummary.deleted}`}</Tag>
-          <Tag>{`修改 ${nextSummary.modified}`}</Tag>
           <Tag color={nextSummary.accepted === nextSummary.total ? 'blue' : 'gold'}>{`已选 ${nextSummary.accepted}/${nextSummary.total}`}</Tag>
         </Space>
+
+        {bundle.files.length > 1 ? (
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Typography.Text strong>文件清单</Typography.Text>
+            <Space wrap size={[8, 8]}>
+              {bundle.files.map((file) => (
+                <Tag
+                  key={file.filePath}
+                  color={file.changeType === 'added' ? 'green' : file.changeType === 'deleted' ? 'red' : 'blue'}
+                >
+                  {`${file.changeType === 'added' ? '新增' : file.changeType === 'deleted' ? '删除' : '修改'} ${file.filePath}`}
+                </Tag>
+              ))}
+            </Space>
+          </Space>
+        ) : null}
 
         {bundle.isEmpty ? (
           <Alert
@@ -96,6 +114,9 @@ export default function ConfirmDialog({
                         {file.changeType === 'added' ? '新增' : file.changeType === 'deleted' ? '删除' : '修改'}
                       </Tag>
                       <Typography.Text code>{file.filePath}</Typography.Text>
+                      <Tag color={selectedFiles[file.filePath] !== false ? 'green' : 'default'}>
+                        {selectedFiles[file.filePath] !== false ? '已接受' : '已拒绝'}
+                      </Tag>
                       <Tag color="green">+{file.additions}</Tag>
                       <Tag color="red">-{file.deletions}</Tag>
                     </Space>
@@ -127,6 +148,9 @@ export default function ConfirmDialog({
 }
 
 function renderDiff(original: string, modified: string, language: string, raw: string) {
+  const formattedOriginal = formatDiffContentForDisplay(language, original);
+  const formattedModified = formatDiffContentForDisplay(language, modified);
+
   return (
     <Tabs
       items={[
@@ -137,6 +161,17 @@ function renderDiff(original: string, modified: string, language: string, raw: s
             <div className="diff-editor-container">
               <Suspense fallback={<div style={{ padding: 16 }}>加载差异编辑器...</div>}>
                 <DiffEditor original={original} modified={modified} language={language} />
+              </Suspense>
+            </div>
+          ),
+        },
+        {
+          key: 'formatted',
+          label: '格式化对比',
+          children: (
+            <div className="diff-editor-container">
+              <Suspense fallback={<div style={{ padding: 16 }}>加载差异编辑器...</div>}>
+                <DiffEditor original={formattedOriginal} modified={formattedModified} language={language} />
               </Suspense>
             </div>
           ),

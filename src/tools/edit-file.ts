@@ -1,9 +1,8 @@
 import { Tool, safeExecute, ToolResult, ToolError } from '../core/tool';
 import { z } from 'zod';
 import fs from 'fs';
-import { generateUnifiedDiff } from '../utils/diff';
-import { appendAuditLog } from '../utils/logger';
-import { resolveWorkspacePath, WorkspaceToolOptions } from './workspace';
+import { ApplyPatchTool } from './apply-patch';
+import { WorkspaceToolOptions } from './workspace';
 
 export class EditFileTool extends Tool {
   name = 'edit_file';
@@ -22,25 +21,31 @@ export class EditFileTool extends Tool {
   protected async executeCore(validatedParams: unknown): Promise<ToolResult> {
     const { filePath, search, replace, isRegex } = validatedParams as z.infer<typeof this.parameters>;
     return safeExecute(this.name, async () => {
-      const fullPath = resolveWorkspacePath(this.options.workspaceRoot, filePath);
+      const patchTool = new ApplyPatchTool(this.options);
+      const fullPath = patchTool.resolvePath(filePath);
       if (!fs.existsSync(fullPath)) {
         throw new ToolError(`文件不存在: ${filePath}`, this.name, { filePath });
       }
-      let content = fs.readFileSync(fullPath, 'utf-8');
-      const before = content;
       if (isRegex) {
-        const regex = new RegExp(search, 'g');
-        content = content.replace(regex, replace);
-      } else {
-        content = content.split(search).join(replace);
+        throw new ToolError(`edit_file 暂不支持 regex 直写，请改用 apply_patch`, this.name, { filePath, isRegex });
       }
-      if (content === before) {
-        return { success: true, output: '未找到匹配内容，文件无变化' };
-      }
-      fs.writeFileSync(fullPath, content, 'utf-8');
-      const diff = generateUnifiedDiff(before, content, filePath);
-      appendAuditLog({ tool: this.name, filePath, diff, timestamp: new Date().toISOString() });
-      return { success: true, output: `已在 ${filePath} 中完成替换`, metadata: { changedFiles: [filePath], diff } };
+      const result = await patchTool.execute({
+        patches: [
+          {
+            filePath,
+            search,
+            replace,
+          },
+        ],
+      });
+      return {
+        ...result,
+        output: result.success ? `已在 ${filePath} 中完成替换` : result.output,
+        metadata: {
+          ...(result.metadata || {}),
+          writeProtocol: 'apply_patch',
+        },
+      };
     });
   }
 }

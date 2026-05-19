@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import type { ChatMessage, ConfirmRequest, ThinkingStep, PlanStep, Workspace } from '../types/messages';
+import { mergeSummaryIntoAssistantMessage, shouldSuppressStandaloneSystemMessage } from '../utils/chat-summary-flow';
 
 interface ChatContextValue {
   messages: ChatMessage[];
@@ -269,69 +270,67 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               break;
 
             case 'test-result':
-              updateMessages((prev) => [
-                ...prev,
-                {
-                  id: crypto.randomUUID(),
-                  role: 'system',
-                  content: `${data.summary}\n${data.command ? `命令: ${data.command}\n` : ''}${safeString(data.output)}`,
-                  contentType: 'text',
-                  timestamp: Date.now(),
-                },
-              ]);
+              if (!shouldSuppressStandaloneSystemMessage(data.type)) {
+                updateMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: 'system',
+                    content: `${data.summary}\n${data.command ? `命令: ${data.command}\n` : ''}${safeString(data.output)}`,
+                    contentType: 'text',
+                    timestamp: Date.now(),
+                  },
+                ]);
+              }
               break;
 
             case 'repair-start':
-              updateMessages((prev) => [
-                ...prev,
-                {
-                  id: crypto.randomUUID(),
-                  role: 'system',
-                  content: `自动修复开始\n${data.command ? `命令: ${data.command}\n` : ''}${data.changedFiles?.length ? `文件: ${data.changedFiles.join(', ')}\n` : ''}${safeString(data.output)}`,
-                  contentType: 'text',
-                  timestamp: Date.now(),
-                },
-              ]);
+              if (!shouldSuppressStandaloneSystemMessage(data.type)) {
+                updateMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: 'system',
+                    content: `自动修复开始\n${data.command ? `命令: ${data.command}\n` : ''}${data.changedFiles?.length ? `文件: ${data.changedFiles.join(', ')}\n` : ''}${safeString(data.output)}`,
+                    contentType: 'text',
+                    timestamp: Date.now(),
+                  },
+                ]);
+              }
               break;
 
             case 'repair-end':
-              updateMessages((prev) => [
-                ...prev,
-                {
-                  id: crypto.randomUUID(),
-                  role: 'system',
-                  content: `自动修复${data.success ? '完成' : '后仍失败'}\n${safeString(data.output)}\n${safeString(data.rerunOutput)}`,
-                  contentType: 'text',
-                  timestamp: Date.now(),
-                },
-              ]);
+              if (!shouldSuppressStandaloneSystemMessage(data.type)) {
+                updateMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: 'system',
+                    content: `自动修复${data.success ? '完成' : '后仍失败'}\n${safeString(data.output)}\n${safeString(data.rerunOutput)}`,
+                    contentType: 'text',
+                    timestamp: Date.now(),
+                  },
+                ]);
+              }
               break;
 
             case 'repair-skipped':
-              updateMessages((prev) => [
-                ...prev,
-                {
-                  id: crypto.randomUUID(),
-                  role: 'system',
-                  content: `自动修复未执行\n${safeString(data.output)}`,
-                  contentType: 'text',
-                  timestamp: Date.now(),
-                },
-              ]);
+              if (!shouldSuppressStandaloneSystemMessage(data.type)) {
+                updateMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: 'system',
+                    content: `自动修复未执行\n${safeString(data.output)}`,
+                    contentType: 'text',
+                    timestamp: Date.now(),
+                  },
+                ]);
+              }
               break;
 
             case 'summary-ready':
-              updateMessages((prev) => [
-                ...prev,
-                {
-                  id: crypto.randomUUID(),
-                  role: 'system',
-                  content: `变更总结\n已应用: ${(data.summary?.appliedFiles || []).join(', ') || '无'}\n测试: ${data.summary?.verification?.commands?.join(', ') || '未执行'}`,
-                  contentType: 'summary',
-                  metadata: data.summary,
-                  timestamp: Date.now(),
-                },
-              ]);
+              updateMessages((prev) => mergeSummaryIntoAssistantMessage(prev, thinkingIdRef.current, data.summary));
               break;
 
             case 'confirm':

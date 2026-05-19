@@ -7,6 +7,21 @@ export interface ParsedDiffView {
   language: string;
   raw: string;
   isEmpty: boolean;
+  changeType?: 'added' | 'deleted' | 'modified';
+  accepted?: boolean;
+}
+
+export interface ParsedDiffBundle {
+  raw: string;
+  isEmpty: boolean;
+  files: ParsedDiffView[];
+  totalAdditions: number;
+  totalDeletions: number;
+  fileSummary: {
+    added: number;
+    deleted: number;
+    modified: number;
+  };
 }
 
 type ToolArgs = Record<string, unknown> | undefined | null;
@@ -96,6 +111,40 @@ export function parseUnifiedDiff(diff: string, args?: ToolArgs): ParsedDiffView 
     language: detectLanguage(filePath),
     raw,
     isEmpty: trimmed.length === 0,
+    changeType: additions > 0 && deletions === 0 ? 'added' : deletions > 0 && additions === 0 ? 'deleted' : 'modified',
+    accepted: true,
+  };
+}
+
+export function parseDiffBundle(diff: string, args?: ToolArgs): ParsedDiffBundle {
+  const raw = diff ?? '';
+  if (!raw.trim()) {
+    return {
+      raw,
+      isEmpty: true,
+      files: [],
+      totalAdditions: 0,
+      totalDeletions: 0,
+      fileSummary: { added: 0, deleted: 0, modified: 0 },
+    };
+  }
+
+  const fileChunks = splitDiffChunks(raw);
+  const files = (fileChunks.length > 0 ? fileChunks : [raw]).map((chunk, index) =>
+    parseUnifiedDiff(chunk, index === 0 ? args : undefined),
+  );
+
+  return {
+    raw,
+    isEmpty: files.length === 0,
+    files,
+    totalAdditions: files.reduce((sum, file) => sum + file.additions, 0),
+    totalDeletions: files.reduce((sum, file) => sum + file.deletions, 0),
+    fileSummary: {
+      added: files.filter((file) => file.changeType === 'added').length,
+      deleted: files.filter((file) => file.changeType === 'deleted').length,
+      modified: files.filter((file) => file.changeType === 'modified').length,
+    },
   };
 }
 
@@ -120,6 +169,26 @@ function detectLanguage(filePath: string): string {
   if (basename === 'dockerfile' || basename.endsWith('.dockerfile')) return 'dockerfile';
   const extension = basename.split('.').pop() || '';
   return extensionLanguages[extension] || 'plaintext';
+}
+
+function splitDiffChunks(diff: string): string[] {
+  const lines = diff.split('\n');
+  const chunks: string[] = [];
+  let current: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith('diff --git ') && current.length > 0) {
+      chunks.push(current.join('\n'));
+      current = [];
+    }
+    current.push(line);
+  }
+
+  if (current.length > 0) {
+    chunks.push(current.join('\n'));
+  }
+
+  return chunks.filter((chunk) => chunk.trim().length > 0);
 }
 
 function trimTrailingBlankLines(lines: string[]): string[] {

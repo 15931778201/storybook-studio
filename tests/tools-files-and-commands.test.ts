@@ -68,7 +68,22 @@ describe('file and command tools', () => {
     });
   });
 
-  it('EditFileTool replaces matching text in a file', async () => {
+  it('WriteFileTool refuses to overwrite an existing file and asks callers to use apply_patch', async () => {
+    await withTempCwd(async (dir) => {
+      fs.writeFileSync(path.join(dir, 'existing.txt'), 'before', 'utf-8');
+
+      const result = await new WriteFileTool().execute({
+        filePath: 'existing.txt',
+        content: 'after',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('apply_patch');
+      expect(fs.readFileSync(path.join(dir, 'existing.txt'), 'utf-8')).toBe('before');
+    });
+  });
+
+  it('EditFileTool delegates to apply_patch and returns unified patch metadata', async () => {
     const dir = makeTempDir();
     const filePath = path.join(dir, 'edit.txt');
     fs.writeFileSync(filePath, 'alpha beta alpha', 'utf-8');
@@ -81,6 +96,61 @@ describe('file and command tools', () => {
 
     expect(result.success).toBe(true);
     expect(fs.readFileSync(filePath, 'utf-8')).toBe('omega beta omega');
+    expect(result.metadata?.writeProtocol).toBe('apply_patch');
+    expect(result.metadata?.changedFiles).toEqual([filePath]);
+    expect(typeof result.metadata?.diff).toBe('string');
+  });
+
+  it('ApplyPatchTool returns conflict metadata and rollback details when a later patch fails', async () => {
+    await withTempCwd(async (dir) => {
+      fs.writeFileSync(path.join(dir, 'a.ts'), 'export const a = 1;\n', 'utf-8');
+      fs.writeFileSync(path.join(dir, 'b.ts'), 'export const b = true;\n', 'utf-8');
+
+      const result = await new ApplyPatchTool().execute({
+        patches: [
+          {
+            filePath: 'a.ts',
+            search: 'export const a = 1;',
+            replace: 'export const a = 2;',
+          },
+          {
+            filePath: 'b.ts',
+            search: 'export const missing = true;',
+            replace: 'export const b = false;',
+          },
+        ],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('未找到匹配内容');
+      expect(result.metadata?.conflict?.filePath).toBe('b.ts');
+      expect(result.metadata?.rollbackPerformed).toBe(true);
+      expect(result.metadata?.rolledBackFiles).toEqual(['a.ts']);
+      expect(fs.readFileSync(path.join(dir, 'a.ts'), 'utf-8')).toContain('export const a = 1;');
+    });
+  });
+
+  it('ApplyPatchTool reports context conflicts separately from missing search text', async () => {
+    await withTempCwd(async (dir) => {
+      fs.writeFileSync(path.join(dir, 'ctx.ts'), 'header\nconst value = 1;\nfooter\n', 'utf-8');
+
+      const result = await new ApplyPatchTool().execute({
+        patches: [
+          {
+            filePath: 'ctx.ts',
+            search: 'const value = 1;',
+            replace: 'const value = 2;',
+            beforeContext: 'different header',
+            afterContext: 'footer',
+          },
+        ],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.metadata?.conflict?.reason).toBe('上下文冲突');
+      expect(result.metadata?.rollbackPerformed).toBe(false);
+      expect(fs.readFileSync(path.join(dir, 'ctx.ts'), 'utf-8')).toBe('header\nconst value = 1;\nfooter\n');
+    });
   });
 
   it('BashTool executes a command with shell support (pipes, redirects, stderr)', async () => {
