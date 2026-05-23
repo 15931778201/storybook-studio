@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Bubble, Sender } from '@ant-design/x';
 import { XMarkdown } from '@ant-design/x-markdown';
-import { Button, Tooltip, message, Space, Modal } from 'antd';
+import { Alert, Button, Tooltip, message, Space, Modal } from 'antd';
 import { CopyOutlined, RedoOutlined, EditOutlined, ExportOutlined } from '@ant-design/icons';
 import { useChatContext } from '../providers/ChatProvider';
 import type { ChatMessage } from '../types/messages';
@@ -16,20 +16,28 @@ import CollapsibleThinkingPanel from './CollapsibleThinkingPanel';
 import SummaryMessageCard from './SummaryMessageCard';
 import { shouldRenderSummaryNarrative } from './SummaryMessageCard';
 import { getBubbleRole, getMessagePlacement, shouldRenderMessage } from '../utils/chat-presentation';
+import { getAutoScrollState } from '../utils/chat-scroll';
+import type { UploadedImageAttachment } from '../utils/chat-upload';
+import { buildMessageWindow } from '../utils/chat-message-window';
+import { buildRunStatusBanner } from '../utils/chat-run-status-banner';
 
 export default function ChatLayout() {
-  const { messages, sendMessage, isRequesting, abort } = useChatContext();
+  const { messages, sendMessage, isRequesting, abort, runState, resumeLastRun, dismissPausedRun } = useChatContext();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
   const [inputVal, setInputVal] = useState('');
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageAttachment, setImageAttachment] = useState<UploadedImageAttachment | null>(null);
+  const [showNewOutput, setShowNewOutput] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
 
   const handleSubmit = useCallback(
     (text: string) => {
-      sendMessage(text, imageBase64);
+      sendMessage(text, imageAttachment);
       setInputVal('');
-      setImageBase64(null);
+      setImageAttachment(null);
     },
-    [sendMessage, imageBase64]
+    [sendMessage, imageAttachment]
   );
 
   const handleCancel = useCallback(() => {
@@ -45,9 +53,37 @@ export default function ChatLayout() {
     });
   }, [abort]);
 
+  const banner = buildRunStatusBanner(runState, messages);
+  const windowedMessages = buildMessageWindow(
+    messages.filter(shouldRenderMessage),
+    { recentCount: 20, historyExpanded },
+  );
+
+  const scrollToBottom = useCallback(() => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    shouldStickToBottomRef.current = true;
+    setShowNewOutput(false);
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current) return;
+    const state = getAutoScrollState({
+      scrollTop: scrollRef.current.scrollTop,
+      clientHeight: scrollRef.current.clientHeight,
+      scrollHeight: scrollRef.current.scrollHeight,
+    });
+    shouldStickToBottomRef.current = state.shouldAutoScroll;
+    if (state.shouldAutoScroll) setShowNewOutput(false);
+  }, []);
+
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+    if (shouldStickToBottomRef.current) {
+      scrollToBottom();
+    } else if (messages.length > 0) {
+      setShowNewOutput(true);
+    }
+  }, [messages, scrollToBottom]);
 
   useEffect(() => {
     (document.querySelector('.ant-sender-input') as HTMLElement)?.focus();
@@ -63,6 +99,7 @@ export default function ChatLayout() {
             goal={msg.metadata?.goal || ''}
             steps={msg.metadata?.steps || []}
             replanReason={msg.metadata?.replanReason}
+            currentExecution={msg.metadata?.currentExecution}
           />
         );
 
@@ -143,8 +180,7 @@ export default function ChatLayout() {
     }
   }
 
-  const items = messages
-    .filter(shouldRenderMessage)
+  const items = windowedMessages.visibleMessages
     .map(msg => ({
       key: msg.id,
       role: getBubbleRole(msg.role),
@@ -207,17 +243,69 @@ export default function ChatLayout() {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
+      {banner && (
+        <Alert
+          type="warning"
+          showIcon
+          message={banner.message}
+          description={banner.description}
+          action={(
+            <Space size="small">
+              <Button size="small" type="primary" onClick={resumeLastRun}>
+                恢复
+              </Button>
+              <Button size="small" onClick={() => latestUserMessage && sendMessage(latestUserMessage.content)}>
+                重发
+              </Button>
+              <Button size="small" onClick={() => {
+                setHistoryExpanded(false);
+                dismissPausedRun();
+                shouldStickToBottomRef.current = true;
+                setShowNewOutput(false);
+              }}>
+                放弃
+              </Button>
+            </Space>
+          )}
+          style={{ margin: '12px 24px 0' }}
+        />
+      )}
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
         {messages.length === 0 && !isRequesting && <EmptyState />}
-        <Bubble.List items={items} style={{ maxWidth: 800, margin: '0 auto' }} />
+        {!historyExpanded && windowedMessages.hiddenCount > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+            <Button size="small" onClick={() => setHistoryExpanded(true)}>
+              展开历史消息 {windowedMessages.hiddenCount} 条
+            </Button>
+          </div>
+        )}
+        <Bubble.List items={items} style={{ maxWidth: 1000, margin: '0 auto' }} />
+        {showNewOutput && (
+          <Button
+            type="primary"
+            size="small"
+            onClick={scrollToBottom}
+            style={{
+              position: 'sticky',
+              bottom: 12,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 2,
+              display: 'block',
+              margin: '0 auto',
+            }}
+          >
+            查看新输出
+          </Button>
+        )}
       </div>
       <div style={{ 
           padding: '0 24px',
           borderTop: '1px solid var(--border-color)'
        }}>
         <ImageUpload
-          onImageReady={setImageBase64}
-          onClear={() => setImageBase64(null)}
+          onImageReady={setImageAttachment}
+          onClear={() => setImageAttachment(null)}
           disabled={isRequesting}
         />
       </div>

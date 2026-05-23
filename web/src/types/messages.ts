@@ -47,6 +47,14 @@ export interface PlanStep {
   resultSummary?: string;
 }
 
+export interface CurrentExecutionState {
+  stepId?: number;
+  phase?: 'step' | 'tool' | 'verification' | 'idle';
+  toolName?: string;
+  status?: 'running' | 'paused' | 'done' | 'error';
+  summary?: string;
+}
+
 export interface Workspace {
   id: string;
   name: string;

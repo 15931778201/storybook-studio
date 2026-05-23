@@ -401,13 +401,14 @@ export class StagedWriteManager {
 
   /** 确认后提交：将暂存的变更真正写入文件系统 */
   async commit(stagedId: string): Promise<{ success: boolean; filePath: string }> {
-    const entry = this.entries.get(stagedId);
+    const entry = this.getEntry(stagedId);
     if (!entry || entry.status !== 'pending') {
       return { success: false, filePath: '' };
     }
 
     const fs = await import('fs');
     try {
+      fs.mkdirSync(await import('path').then((path) => path.dirname(entry.fullPath)), { recursive: true });
       fs.writeFileSync(entry.fullPath, entry.patchedContent, 'utf-8');
       entry.status = 'committed';
       entry.committedAt = new Date().toISOString();
@@ -427,7 +428,7 @@ export class StagedWriteManager {
 
   /** 拒绝后回滚：恢复原始内容 */
   async rollback(stagedId: string): Promise<{ success: boolean; filePath: string }> {
-    const entry = this.entries.get(stagedId);
+    const entry = this.getEntry(stagedId);
     if (!entry || entry.status !== 'pending') {
       return { success: false, filePath: '' };
     }
@@ -487,12 +488,49 @@ export class StagedWriteManager {
   }
 
   /** 获取指定会话的所有暂存条目 */  getBySession(sessionId: string): StagedWriteEntry[] {
+    this.loadEntriesFromDisk();
     return [...this.entries.values()].filter((e) => e.sessionId === sessionId);
   }
 
   /** 获取指定状态的暂存条目 */
   getByStatus(status: StagedWriteStatus): StagedWriteEntry[] {
+    this.loadEntriesFromDisk();
     return [...this.entries.values()].filter((e) => e.status === status);
+  }
+
+  private getEntry(stagedId: string) {
+    const cached = this.entries.get(stagedId);
+    if (cached) {
+      return cached;
+    }
+
+    const fs = require('fs') as typeof import('fs');
+    const stagingFilePath = `${this.stagingDir}/${stagedId}.json`;
+    if (!fs.existsSync(stagingFilePath)) {
+      return undefined;
+    }
+
+    try {
+      const entry = JSON.parse(fs.readFileSync(stagingFilePath, 'utf-8')) as StagedWriteEntry;
+      this.entries.set(stagedId, entry);
+      return entry;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private loadEntriesFromDisk() {
+    const fs = require('fs') as typeof import('fs');
+    if (!fs.existsSync(this.stagingDir)) {
+      return;
+    }
+
+    for (const fileName of fs.readdirSync(this.stagingDir)) {
+      if (!fileName.endsWith('.json')) continue;
+      const stagedId = fileName.replace(/\.json$/, '');
+      if (this.entries.has(stagedId)) continue;
+      this.getEntry(stagedId);
+    }
   }
 }
 

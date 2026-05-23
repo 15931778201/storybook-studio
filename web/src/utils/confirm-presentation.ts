@@ -44,11 +44,12 @@ export function buildFileManifestGroups(
   files: Array<ConfirmPresentationFile & { additions?: number; deletions?: number }>,
 ): FileManifestGroup[] {
   const groups = groupFilesByChangeType(files);
-  return [
+  const manifestGroups: FileManifestGroup[] = [
     { label: '新增', color: 'green', changeType: 'added', files: groups.added },
     { label: '删除', color: 'red', changeType: 'deleted', files: groups.deleted },
     { label: '修改', color: 'blue', changeType: 'modified', files: groups.modified },
-  ].filter((group) => group.files.length > 0);
+  ];
+  return manifestGroups.filter((group) => group.files.length > 0);
 }
 
 export function shouldRenderSummaryNarrative(content: string | undefined | null) {

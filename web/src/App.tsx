@@ -19,23 +19,21 @@ import './App.css';
 import CronPage from './pages/CronPage';
 import LogsPage from './pages/LogsPage';
 import ChangelogPage from './pages/ChangelogPage';
+import AuditPage from './pages/AuditPage';
+import {
+  applyThemePreference,
+  getInitialThemePreference,
+  toggleThemePreference,
+} from './utils/theme-state';
 
 const { Sider, Content, Header } = Layout;
 
-function AppInner() {
+function AppInner({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme: () => void }) {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768);
   const { activeRole, setActiveRole } = useChatContext();
   const { token } = antTheme.useToken();
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
   const navigate = useNavigate();
   const location = useLocation();
-
-  useEffect(() => {
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    document.documentElement.classList.toggle('dark', isDark);
-  }, [isDark]);
-
-  const toggleTheme = useCallback(() => setIsDark(prev => !prev), []);
 
   const navItems = [
     { key: '/', icon: <MessageOutlined />, label: '对话' },
@@ -46,6 +44,7 @@ function AppInner() {
     { key: '/roles', icon: <UserOutlined />, label: '角色' },
     { key: '/cron', icon: <ClockCircleOutlined />, label: '定时任务' },
     { key: '/logs', icon: <FileTextOutlined />, label: '日志' },
+    { key: '/audit', icon: <FileTextOutlined />, label: '审计' },
     { key: '/changelog', icon: <DiffOutlined />, label: '变更日志' },
     { key: '/settings', icon: <SettingOutlined />, label: '设置' },
   ];
@@ -77,7 +76,7 @@ function AppInner() {
           <Space style={{ marginLeft: 16 }}>
             <RoleSelector activeRole={activeRole} onSelectRole={setActiveRole} />
             <Tooltip title={isDark ? '切换亮色模式' : '切换暗色模式'}>
-              <Button type="text" icon={isDark ? <SunOutlined /> : <MoonOutlined />} onClick={toggleTheme} />
+              <Button type="text" icon={isDark ? <SunOutlined /> : <MoonOutlined />} onClick={onToggleTheme} />
             </Tooltip>
           </Space>
         </Header>
@@ -95,6 +94,7 @@ function AppInner() {
             <Route path="/roles" element={<RoleManagementPage />} />
             <Route path="/cron" element={<CronPage />} />
             <Route path="/logs" element={<LogsPage />} />
+            <Route path="/audit" element={<AuditPage />} />
             <Route path="/changelog" element={<ChangelogPage />} />
           </Routes>
         </Content>
@@ -104,16 +104,16 @@ function AppInner() {
 }
 
 export default function App() {
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
+  const [isDark, setIsDark] = useState(() => getInitialThemePreference());
   useEffect(() => {
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    document.documentElement.classList.toggle('dark', isDark);
+    applyThemePreference(isDark);
   }, [isDark]);
+  const toggleTheme = useCallback(() => setIsDark(toggleThemePreference), []);
 
   return (
     <ConfigProvider theme={{ algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm, token: { borderRadius: 8 } }}>
       <XProvider>
-        <ChatProvider><AppInner /></ChatProvider>
+        <ChatProvider><AppInner isDark={isDark} onToggleTheme={toggleTheme} /></ChatProvider>
       </XProvider>
     </ConfigProvider>
   );

@@ -3,6 +3,7 @@ import { AdaptivePipeline } from './adaptive-pipeline';
 import type { AgentConfig } from '../types/config';
 import type { Message } from '../types/message';
 import type { StepPipeline } from './step-pipeline';
+import { loadRuntimeSnapshot, saveRuntimeSnapshot } from '../storage/session-runtime-store';
 
 export class AgentLoop {
   private pipeline: StepPipeline;
@@ -17,12 +18,31 @@ export class AgentLoop {
     this.maxIterations = config.maxIterations;
   }
 
-  async run(userInput: string, signal?: AbortSignal): Promise<string> {
+  async run(userInput: string, signal?: AbortSignal, options?: { resume?: boolean }): Promise<string> {
     const imageBase64 = (this.config as any).imageBase64 as string | undefined;
-    const messages: Message[] = [{ role: 'user', content: userInput, imageBase64 }];
+    const runtimeSnapshot = options?.resume ? loadRuntimeSnapshot(this.sessionId) : null;
+    const adaptive = this.pipeline instanceof AdaptivePipeline ? this.pipeline : null;
+    if (adaptive && runtimeSnapshot) {
+      adaptive.hydrateRuntimeState(runtimeSnapshot);
+    }
+
+    const messages: Message[] = runtimeSnapshot?.messages?.length
+      ? runtimeSnapshot.messages
+      : [{ role: 'user', content: userInput, imageBase64 }];
 
     for (let iter = 1; iter <= this.maxIterations; iter++) {
-      if (signal?.aborted) return '任务已被取消。';
+      if (signal?.aborted) {
+        if (adaptive) {
+          saveRuntimeSnapshot({
+            ...adaptive.snapshotRuntime(messages),
+            status: 'paused',
+            phase: 'aborted',
+            lastInput: userInput,
+            messages,
+          });
+        }
+        return '任务已被取消。';
+      }
 
       const result = await this.pipeline.executeStep(messages, userInput, iter);
       if (result.done) {

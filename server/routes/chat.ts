@@ -24,9 +24,27 @@ import {
   WriteFileTool,
 } from '../../src';
 import { changelogStore, knowledgeBaseManager, mcpClient, modelConfigStore, roleStore, skillManager } from '../context';
+import { loadRuntimeSnapshot, saveRuntimeSnapshot } from '../../src/storage/session-runtime-store';
+import { appendAuditLog } from '../../src/utils/logger';
 
 const chat = new Hono();
 const eventBus = AgentEventBus.getInstance();
+const sessionRuntime = new Map<string, {
+  agent: AgentLoop;
+  abortController: AbortController | null;
+  lastInput: string;
+  running: boolean;
+}>();
+
+function appendTimelineEvent(sessionId: string, eventType: string, payload: Record<string, any> = {}) {
+  appendAuditLog({
+    sessionId,
+    category: 'timeline',
+    eventType,
+    timestamp: new Date().toISOString(),
+    ...payload,
+  });
+}
 
 export function buildChatTools(workspaceRoot = '.') {
   const baseTools = [
@@ -108,7 +126,15 @@ chat.get('/stream/:sessionId', async (c) => {
   const workspaceRoot = c.req.query('projectPath') || '.';
   const roleId = c.req.query('roleId') || undefined;
   const imageRef = c.req.query('imageRef') || undefined;
+  appendTimelineEvent(sessionId, 'user-input', { summary: userInput, workspaceRoot, roleId });
   const agent = createAgent(sessionId, { workspaceRoot, kbIds, roleId, imageRef });
+  const runtimeSnapshot = loadRuntimeSnapshot(sessionId);
+  sessionRuntime.set(sessionId, {
+    agent,
+    abortController: new AbortController(),
+    lastInput: runtimeSnapshot?.lastInput || userInput,
+    running: true,
+  });
 
   let streamClosed = false;
   const stream = new ReadableStream({
@@ -122,14 +148,30 @@ chat.get('/stream/:sessionId', async (c) => {
       };
 
       const confirmHandler = (req: any) => {
-        if (req.sessionId === sessionId) send({ type: 'confirm', ...req });
+        if (req.sessionId === sessionId) {
+          appendTimelineEvent(sessionId, 'confirm-request', {
+            toolName: req.toolName,
+            summary: req.summary ? JSON.stringify(req.summary) : req.toolName,
+          });
+          send({ type: 'confirm', ...req });
+        }
       };
-      const msgHandler = (data: any) => send(data);
+      const msgHandler = (data: any) => {
+        appendTimelineEvent(sessionId, data.type || 'message', {
+          toolName: data.toolName,
+          stepId: data.stepId,
+          status: data.status,
+          summary: typeof data.content === 'string'
+            ? data.content.slice(0, 200)
+            : data.summary || data.resultSummary || data.command || '',
+        });
+        send(data);
+      };
 
       eventBus.on('confirm-request', confirmHandler);
       eventBus.on(`message-${sessionId}`, msgHandler);
 
-      agent.run(userInput)
+      agent.run(userInput, sessionRuntime.get(sessionId)?.abortController?.signal, { resume: false })
         .then((final: string) => {
           send({ type: 'final', content: final });
           if (final && final.length > 10 && !final.startsWith('⚠️')) {
@@ -146,6 +188,11 @@ chat.get('/stream/:sessionId', async (c) => {
         })
         .catch((err: Error) => send({ type: 'error', content: err.message }))
         .finally(() => {
+          const runtime = sessionRuntime.get(sessionId);
+          if (runtime) {
+            runtime.running = false;
+            runtime.abortController = null;
+          }
           eventBus.off('confirm-request', confirmHandler);
           eventBus.off(`message-${sessionId}`, msgHandler);
           streamClosed = true;
@@ -165,8 +212,54 @@ chat.get('/stream/:sessionId', async (c) => {
 
 chat.post('/confirm', async (c) => {
   const { sessionId, approved, selectedFiles } = await c.req.json();
+  appendTimelineEvent(sessionId, 'confirm-response', {
+    status: approved ? 'approved' : 'rejected',
+    summary: approved ? '用户已确认' : '用户已拒绝',
+    selectedFiles,
+  });
   eventBus.emit('confirm-response', { sessionId, approved, selectedFiles });
   return c.json({ ok: true });
+});
+
+chat.post('/sessions/:sessionId/stop', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const runtime = sessionRuntime.get(sessionId);
+  if (!runtime || !runtime.running || !runtime.abortController) {
+    return c.json({ ok: false, error: 'session not running' }, 404);
+  }
+  runtime.abortController.abort();
+  runtime.running = false;
+  appendTimelineEvent(sessionId, 'session-stop', { status: 'paused', summary: '用户停止当前运行' });
+  const snapshot = loadRuntimeSnapshot(sessionId);
+  if (snapshot) {
+    saveRuntimeSnapshot({ ...snapshot, status: 'paused', phase: 'aborted' });
+  }
+  return c.json({ ok: true, sessionId, stopped: true });
+});
+
+chat.post('/sessions/:sessionId/resume', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const runtime = sessionRuntime.get(sessionId);
+  const snapshot = loadRuntimeSnapshot(sessionId);
+  const lastInput = snapshot?.lastInput || runtime?.lastInput;
+  if (!lastInput) {
+    return c.json({ ok: false, error: 'session not found' }, 404);
+  }
+  const current = runtime || {
+    agent: createAgent(sessionId),
+    abortController: null,
+    lastInput,
+    running: false,
+  };
+  current.abortController = new AbortController();
+  current.running = true;
+  current.lastInput = lastInput;
+  sessionRuntime.set(sessionId, current);
+  appendTimelineEvent(sessionId, 'session-resume', { status: 'running', summary: '恢复上次运行' });
+  const final = await current.agent.run(lastInput, current.abortController.signal, { resume: true });
+  current.running = false;
+  current.abortController = null;
+  return c.json({ ok: true, sessionId, resumed: true, final });
 });
 
 export { chat };

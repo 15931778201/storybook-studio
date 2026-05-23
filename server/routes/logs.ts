@@ -62,4 +62,97 @@ logs.get('/query', (c) => {
   return c.json(result);
 });
 
+logs.get('/audit', (c) => {
+  const sessionId = c.req.query('sessionId');
+  const action = c.req.query('action');
+  const toolName = c.req.query('toolName');
+  const status = c.req.query('status');
+  const keyword = c.req.query('keyword');
+  const limit = parseInt(c.req.query('limit') || '100', 10);
+  const auditPath = '.agent/audit.jsonl';
+
+  if (!fs.existsSync(auditPath)) {
+    return c.json({ items: [], total: 0 });
+  }
+
+  const items = fs.readFileSync(auditPath, 'utf-8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .filter((entry: any) => !sessionId || entry.sessionId === sessionId)
+    .filter((entry: any) => !action || entry.action === action)
+    .filter((entry: any) => !toolName || entry.toolName === toolName)
+    .filter((entry: any) => !status || entry.status === status)
+    .filter((entry: any) => {
+      if (!keyword) return true;
+      const haystack = JSON.stringify(entry).toLowerCase();
+      return haystack.includes(keyword.toLowerCase());
+    })
+    .slice(-limit)
+    .reverse();
+
+  return c.json({
+    items,
+    total: items.length,
+  });
+});
+
+logs.get('/audit/timeline', (c) => {
+  const sessionId = c.req.query('sessionId');
+  const auditPath = '.agent/audit.jsonl';
+
+  if (!sessionId) {
+    return c.json({ error: 'sessionId is required' }, 400);
+  }
+  if (!fs.existsSync(auditPath)) {
+    return c.json({ items: [], total: 0, summary: { allowed: 0, denied: 0, errors: 0 } });
+  }
+
+  const entries = fs.readFileSync(auditPath, 'utf-8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .filter((entry: any) => entry.sessionId === sessionId)
+    .sort((a: any, b: any) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+
+  const items = entries.map((entry: any) => ({
+    timestamp: entry.timestamp,
+    kind: entry.category === 'timeline'
+      ? entry.eventType
+      : entry.toolName
+        ? 'tool'
+        : entry.action || 'event',
+    action: entry.action,
+    status: entry.status,
+    toolName: entry.toolName,
+    summary: entry.summary || entry.reason || entry.output || entry.filePath || '',
+    filePath: entry.filePath,
+    raw: entry,
+  }));
+
+  return c.json({
+    items,
+    total: items.length,
+    summary: {
+      allowed: entries.filter((entry: any) => entry.action === 'allowed').length,
+      denied: entries.filter((entry: any) => entry.action === 'denied').length,
+      errors: entries.filter((entry: any) => entry.status === 'error').length,
+    },
+  });
+});
+
 export { logs };

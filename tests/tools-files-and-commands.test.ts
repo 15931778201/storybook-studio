@@ -290,4 +290,36 @@ describe('file and command tools', () => {
       expect(fs.readFileSync(path.join(dir, 'b.ts'), 'utf-8')).toContain('export const b = false;');
     });
   });
+
+  it('ApplyPatchTool stages changes without writing files until committed', async () => {
+    await withTempCwd(async (dir) => {
+      fs.writeFileSync(path.join(dir, 'staged.ts'), 'export const staged = 1;\n', 'utf-8');
+
+      const stagedResult = await new ApplyPatchTool({ workspaceRoot: dir }).execute({
+        sessionId: 'session-staged',
+        staged: true,
+        patches: [
+          {
+            filePath: 'staged.ts',
+            search: 'export const staged = 1;',
+            replace: 'export const staged = 2;',
+          },
+        ],
+      });
+
+      expect(stagedResult.success).toBe(true);
+      expect(stagedResult.metadata?.pendingConfirmation).toBe(true);
+      expect(stagedResult.metadata?.stagedIds).toHaveLength(1);
+      expect(fs.readFileSync(path.join(dir, 'staged.ts'), 'utf-8')).toBe('export const staged = 1;\n');
+
+      const { CommitStagedWriteTool } = await import('../src/tools/commit-staged-write');
+      const commitResult = await new CommitStagedWriteTool().execute({
+        stagedId: stagedResult.metadata?.stagedIds?.[0],
+        sessionId: 'session-staged',
+      });
+
+      expect(commitResult.success).toBe(true);
+      expect(fs.readFileSync(path.join(dir, 'staged.ts'), 'utf-8')).toBe('export const staged = 2;\n');
+    });
+  });
 });

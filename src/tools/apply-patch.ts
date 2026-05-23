@@ -23,6 +23,10 @@ export class ApplyPatchTool extends Tool {
     patches: z.array(patchInstructionSchema).min(1).describe('要应用的补丁列表'),
     sessionId: z.string().optional().describe('会话ID，用于暂存操作'),
     staged: z.boolean().optional().default(false).describe('是否使用暂存模式'),
+    checkpoint: z.object({
+      completedHunks: z.number().int().nonnegative(),
+      patches: z.array(patchInstructionSchema),
+    }).optional(),
   });
 
   private stagedWriteManager: StagedWriteManager;
@@ -39,7 +43,7 @@ export class ApplyPatchTool extends Tool {
   }
 
   protected async executeCore(validatedParams: unknown) {
-    const { patches, sessionId, staged } = validatedParams as z.infer<typeof this.parameters>;
+    const { patches, sessionId, staged, checkpoint } = validatedParams as z.infer<typeof this.parameters>;
 
     return safeExecute(this.name, async () => {
       // 如果启用了staged模式，先暂存所有操作
@@ -48,18 +52,24 @@ export class ApplyPatchTool extends Tool {
       }
       
       // 否则执行直接写入（保持向后兼容）
-      return await this.executeDirect(patches);
+      return await this.executeDirect(patches, checkpoint);
     });
   }
 
-  private async executeDirect(patches: z.infer<typeof patchInstructionSchema>[]) {
+  private async executeDirect(
+    patches: z.infer<typeof patchInstructionSchema>[],
+    checkpoint?: { completedHunks: number; patches: z.infer<typeof patchInstructionSchema>[] }
+  ) {
     const diffParts: string[] = [];
     const changedFiles: string[] = [];
     const backups: Array<{ filePath: string; fullPath: string; backupPath: string }> = [];
     let conflict: UnifiedWriteResult['conflict'] | undefined;
+    const startHunkIndex = checkpoint && JSON.stringify(checkpoint.patches) === JSON.stringify(patches)
+      ? Math.min(checkpoint.completedHunks, patches.length)
+      : 0;
 
     try {
-      for (let hunkIndex = 0; hunkIndex < patches.length; hunkIndex++) {
+      for (let hunkIndex = startHunkIndex; hunkIndex < patches.length; hunkIndex++) {
         const patch = patches[hunkIndex];
         const fullPath = this.resolvePath(patch.filePath);
         if (!fs.existsSync(fullPath)) {
@@ -75,12 +85,12 @@ export class ApplyPatchTool extends Tool {
           const hunkConflict = hunkCheck.conflicts[0];
           conflict = {
             filePath: patch.filePath,
-            reason: hunkConflict.reason,
+            reason: humanizeConflictReason(hunkConflict.reason),
             hunkIndex: hunkConflict.hunkIndex,
             searchSnippet: hunkConflict.searchSnippet,
           };
           throw new ToolError(
-            `Hunk 冲突 [${hunkConflict.reason}]: ${patch.filePath} hunk#${hunkIndex}`,
+            `${humanizeConflictReason(hunkConflict.reason)}: ${patch.filePath} hunk#${hunkIndex}`,
             this.name,
             { filePath: patch.filePath, hunkIndex, reason: hunkConflict.reason },
           );
@@ -192,15 +202,19 @@ export class ApplyPatchTool extends Tool {
       };
     }
 
-    const result: UnifiedWriteResult = {
-      writeProtocol: 'apply_patch',
-      changedFiles,
-      appliedFiles: changedFiles,
-      diff: diffParts.join('\n'),
-      backupCount: backups.filter((entry) => entry.backupPath).length,
-      rollbackPerformed: false,
-      rolledBackFiles: [],
-    };
+      const result: UnifiedWriteResult = {
+        writeProtocol: 'apply_patch',
+        changedFiles,
+        appliedFiles: changedFiles,
+        diff: diffParts.join('\n'),
+        backupCount: backups.filter((entry) => entry.backupPath).length,
+        rollbackPerformed: false,
+        rolledBackFiles: [],
+        checkpoint: {
+          completedHunks: patches.length,
+          patches,
+        },
+      };
     return {
       success: true,
       output: changedFiles.length > 0
@@ -237,7 +251,7 @@ export class ApplyPatchTool extends Tool {
         if (hunkCheck.hasConflict) {
           const hunkConflict = hunkCheck.conflicts[0];
           throw new ToolError(
-            `Hunk 冲突 [${hunkConflict.reason}]: ${patch.filePath} hunk#${hunkIndex}`,
+            `${humanizeConflictReason(hunkConflict.reason)}: ${patch.filePath} hunk#${hunkIndex}`,
             this.name,
             { filePath: patch.filePath, hunkIndex, reason: hunkConflict.reason },
           );
@@ -346,4 +360,19 @@ function checkPatchContext(content: string, search: string, beforeContext?: stri
   }
 
   return { ok: true };
+}
+
+function humanizeConflictReason(reason: string) {
+  switch (reason) {
+    case 'not_found':
+      return '未找到匹配内容';
+    case 'multiple_matches':
+      return '匹配次数不符合预期';
+    case 'context_mismatch':
+      return '上下文冲突';
+    case 'line_offset_drift':
+      return '上下文行偏移冲突';
+    default:
+      return reason;
+  }
 }

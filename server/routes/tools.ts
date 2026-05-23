@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getToolDefinitions } from '../../src/core/tool';
+import { FileTreeSummaryTool, GitContextTool, RepoMapTool } from '../../src';
 
 const tools = new Hono();
 
@@ -26,6 +27,35 @@ tools.get('/', async (c) => {
     return c.json({
       success: false,
       error: 'Failed to fetch tools'
+    }, 500);
+  }
+});
+
+tools.get('/workspace-context', async (c) => {
+  const projectPath = c.req.query('projectPath') || '.';
+  try {
+    const repoMap = new RepoMapTool({ workspaceRoot: projectPath });
+    const fileTree = new FileTreeSummaryTool({ workspaceRoot: projectPath });
+    const gitContext = new GitContextTool({ workspaceRoot: projectPath });
+
+    const [repoMapResult, fileTreeResult, gitContextResult] = await Promise.all([
+      repoMap.execute({ path: '.', maxFiles: 30, maxDepth: 3 }),
+      fileTree.execute({ path: '.', maxDepth: 3, maxEntries: 80 }),
+      gitContext.execute({ commits: 3, diffLines: 120 }),
+    ]);
+
+    return c.json({
+      success: true,
+      data: {
+        repoMap: repoMapResult.output,
+        fileTreeSummary: fileTreeResult.output,
+        gitContext: gitContextResult.output,
+      },
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      error: error?.message || 'Failed to load workspace context',
     }, 500);
   }
 });

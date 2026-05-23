@@ -1,11 +1,9 @@
-import { Tool, safeExecute, ToolError } from '../core/tool';
+import { Tool, safeExecute } from '../core/tool';
 import { z } from 'zod';
 import fs from 'fs';
 import { createBackup } from '../utils/backup';
-import { generateUnifiedDiff } from '../utils/diff';
 import { appendAuditLog } from '../utils/logger';
 import { resolveWorkspacePath, WorkspaceToolOptions } from './workspace';
-import { StagedWriteManager } from '../core/write-protocol';
 
 export class WriteFileTool extends Tool {
   name = 'write_file';
@@ -14,7 +12,7 @@ export class WriteFileTool extends Tool {
     filePath: z.string().describe('文件路径'), 
     content: z.string().describe('文件内容'),
     sessionId: z.string().optional().describe('会话ID，用于暂存操作'),
-    staged: z.boolean().optional().default(false).describe('是否使用暂存模式')
+    staged: z.boolean().optional().default(false).describe('保留字段；现有文件改写请改用 apply_patch')
   });
   
   // 自然语言示例：展示如何调用此工具
@@ -26,13 +24,11 @@ export class WriteFileTool extends Tool {
 
 这将在 src/utils/ 目录下创建 helper.js 文件，内容为 console.log('Hello, World!');`;
 
-  private stagedWriteManager: StagedWriteManager;
   private options: WorkspaceToolOptions;
 
   constructor(options: WorkspaceToolOptions = {}) { 
     super(); 
     this.options = options;
-    this.stagedWriteManager = new StagedWriteManager('.agent/staging');
   }
 
   resolvePath(filePath: string): string {
@@ -40,7 +36,7 @@ export class WriteFileTool extends Tool {
   }
 
   protected async executeCore(validatedParams: unknown) {
-    const { filePath, content, sessionId, staged } = validatedParams as z.infer<typeof this.parameters>;
+    const { filePath, content, sessionId } = validatedParams as z.infer<typeof this.parameters>;
     
     return safeExecute(this.name, async () => {
       const fullPath = this.resolvePath(filePath);
@@ -87,83 +83,30 @@ export class WriteFileTool extends Tool {
           metadata: { changedFiles: [], writeProtocol: 'apply_patch', committed: true },
         };
       }
-      
-      if (staged) {
-        // 使用 staged write 模式
-        const diff = generateUnifiedDiff(oldContent, content, filePath);
-        const backupPath = createBackup(fullPath);
-        
-        const stagedEntry = await this.stagedWriteManager.stage({
-          sessionId: sessionId || 'default-session',
-          toolName: this.name,
-          filePath,
-          fullPath,
-          originalContent: oldContent,
-          patchedContent: content,
-          diff,
-          backupPath,
-        });
-        
-        const auditRecord = {
-          id: `audit-${Date.now()}`,
-          sessionId: sessionId || 'default-session',
-          toolName: this.name,
-          writeProtocol: 'apply_patch' as const,
-          filePath,
-          action: 'stage' as const,
-          diff,
-          backupPath,
-          status: 'pending' as const,
-          timestamp: new Date().toISOString(),
-          metadata: { stagedId: stagedEntry.id, operation: 'overwrite' }
-        };
-        appendAuditLog(auditRecord);
-        
-        return {
-          success: true,
-          output: `文件 ${filePath} 的修改已暂存，等待确认`,
-          metadata: {
-            writeProtocol: 'apply_patch',
-            changedFiles: [filePath],
-            diff,
-            stagedId: stagedEntry.id,
-            backupPath: stagedEntry.backupPath,
-            pendingConfirmation: true
-          },
-        };
-      } else {
-        // 直接写入（保持向后兼容）
-        const diff = generateUnifiedDiff(oldContent, content, filePath);
-        const backupPath = createBackup(fullPath);
-        fs.writeFileSync(fullPath, content, 'utf8');
-        
-        const auditRecord = {
-          id: `audit-${Date.now()}`,
-          sessionId: sessionId || '',
-          toolName: this.name,
-          writeProtocol: 'apply_patch' as const,
-          filePath,
-          action: 'apply' as const,
-          diff,
-          backupPath,
-          status: 'committed' as const,
-          timestamp: new Date().toISOString(),
-          metadata: { operation: 'overwrite' }
-        };
-        appendAuditLog(auditRecord);
-        
-        return {
-          success: true,
-          output: `文件 ${filePath} 已更新`,
-          metadata: {
-            writeProtocol: 'apply_patch',
-            changedFiles: [filePath],
-            diff,
-            backupPath,
-            committed: true
-          },
-        };
-      }
+
+      appendAuditLog({
+        id: `audit-${Date.now()}`,
+        sessionId: sessionId || '',
+        toolName: this.name,
+        writeProtocol: 'apply_patch' as const,
+        filePath,
+        action: 'apply' as const,
+        diff: '',
+        backupPath: '',
+        status: 'rolled_back' as const,
+        timestamp: new Date().toISOString(),
+        metadata: { operation: 'overwrite-denied' },
+      });
+
+      return {
+        success: false,
+        output: `文件 ${filePath} 已存在；覆盖已有文件请改用 apply_patch`,
+        metadata: {
+          writeProtocol: 'apply_patch',
+          changedFiles: [],
+          committed: false,
+        },
+      };
     });
   }
 }

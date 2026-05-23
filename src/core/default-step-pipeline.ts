@@ -11,12 +11,15 @@ import type { Message, ToolCall } from '../types/message';
 import type { ConfirmRequest } from '../types/confirm';
 import { RoleProfile } from '../types/role';
 import { buildSystemPrompt } from '../context/system-prompt';
-import { runAutoVerification, summarizeAppliedFiles } from './auto-verification';
+import { runCheckpointedVerification, summarizeAppliedFiles, type VerificationCheckpoint } from './auto-verification';
 import { buildConfirmPreview, filterToolArgsByDecision } from './confirm-selection';
 import { buildPatchArgsForWrite, shouldPromoteWriteToPatch } from './write-protocol';
 import { buildFinalAnswerFromSummary } from './final-answer';
 import fs from 'fs';
 import { resolveWorkspacePath } from '../tools/workspace';
+import { sessionControlStore } from '../storage/session-control-store';
+import { appendAuditLog } from '../utils/logger';
+import { BashTool } from '../tools/bash';
 
 // 判断两个工具调用结果是否相似（用于检测重复调用）
 function outputSimilar(a: string, b: string): boolean {
@@ -93,6 +96,7 @@ export class DefaultStepPipeline extends StepPipeline {
   protected modelConfigStore: ModelConfigStore | null;
   protected skillManager: any;
   protected knowledgeBase: any;
+  protected runtimeData: Record<string, unknown> = {};
   // 性能优化相关
   protected retrievalCache: Map<string, string> = new Map();
   protected lastToolCalls: Map<string, { args: string; output: string }> = new Map();
@@ -305,7 +309,40 @@ export class DefaultStepPipeline extends StepPipeline {
     if (ragCtx) {
       messages.unshift({ role: 'system', content: `📖 相关知识:\n${ragCtx}` });
     }
+
+    const workspaceRoot = this.resolveWorkspaceRoot();
+    const contextSnippets = await this.getWorkspaceContextSnippets(userInput, workspaceRoot);
+    if (contextSnippets.length > 0) {
+      messages.unshift({ role: 'system', content: contextSnippets.join('\n\n') });
+    }
     return messages;
+  }
+
+  protected resolveWorkspaceRoot() {
+    const policyOptions = (this.config.policy as any)?.options || {};
+    return policyOptions.workspaceRoot || '.';
+  }
+
+  protected async getWorkspaceContextSnippets(userInput: string, workspaceRoot: string): Promise<string[]> {
+    const snippets: string[] = [];
+    const tools = this.collectAllTools();
+    const repoMap = tools.find((tool) => tool.name === 'repo_map');
+    const fileTree = tools.find((tool) => tool.name === 'file_tree_summary');
+    const gitContext = tools.find((tool) => tool.name === 'git_context');
+
+    if (repoMap) {
+      const result = await repoMap.execute({ path: '.', maxFiles: 30, maxDepth: 3 });
+      if (result.success && result.output) snippets.push(`🗺️ 项目地图\n${result.output}`);
+    }
+    if (fileTree) {
+      const result = await fileTree.execute({ path: '.', maxDepth: 3, maxEntries: 80 });
+      if (result.success && result.output) snippets.push(`🌲 文件树摘要\n${result.output}`);
+    }
+    if (gitContext) {
+      const result = await gitContext.execute({ commits: 3, diffLines: 120 });
+      if (result.success && result.output) snippets.push(`🧾 最近变更\n${result.output}`);
+    }
+    return snippets;
   }
   
 
@@ -575,13 +612,56 @@ export class DefaultStepPipeline extends StepPipeline {
         args = promoted.args;
       }
     }
+    if (tool?.name === 'apply_patch') {
+      const checkpoint = (this as any).getRuntimeData?.('applyPatchCheckpoint');
+      if (
+        checkpoint
+        && Array.isArray(args?.patches)
+        && JSON.stringify(checkpoint.patches) === JSON.stringify(args.patches)
+        && args.checkpoint == null
+      ) {
+        args = {
+          ...args,
+          checkpoint,
+        };
+      }
+    }
 
     // 发送 tool-start 事件
     this.eventBus.emit(`message-${this.sessionId}`, {
       type: 'tool-start',
       toolName: tool?.name || tc.function.name,
       args: tc.function.arguments,
+      stepId: this.resolveCurrentPlanStepId(),
     });
+
+    const currentStepId = this.resolveCurrentPlanStepId();
+    if (sessionControlStore.matchesPause(this.sessionId, {
+      stepId: currentStepId,
+      scope: 'tool',
+      toolName: tool?.name || tc.function.name,
+    }) || sessionControlStore.matchesPause(this.sessionId, {
+      stepId: currentStepId,
+      scope: 'session',
+    })) {
+      appendAuditLog({
+        sessionId: this.sessionId,
+        toolName: tool?.name || tc.function.name,
+        action: 'paused',
+        status: 'paused',
+        reason: '工具级暂停',
+        args,
+        timestamp: new Date().toISOString(),
+      });
+      this.eventBus.emit(`message-${this.sessionId}`, {
+        type: 'tool-end',
+        toolName: tool?.name || tc.function.name,
+        stepId: currentStepId,
+        status: 'paused',
+        result: '已在工具执行前暂停',
+      });
+      return false;
+    }
 
     if (!tool) {
       const msg = `未找到工具 ${tc.function.name}`;
@@ -589,6 +669,7 @@ export class DefaultStepPipeline extends StepPipeline {
       this.eventBus.emit(`message-${this.sessionId}`, {
         type: 'tool-end',
         toolName: tc.function.name,
+        stepId: currentStepId,
         status: 'error',
         result: msg,
       });
@@ -605,6 +686,7 @@ export class DefaultStepPipeline extends StepPipeline {
       this.eventBus.emit(`message-${this.sessionId}`, {
         type: 'tool-end',
         toolName: tool.name,
+        stepId: currentStepId,
         status: 'error',
         result: err.message,
       });
@@ -613,10 +695,20 @@ export class DefaultStepPipeline extends StepPipeline {
 
     if (!policyResult.allowed) {
       const reason = policyResult.reason || '被策略拦截';
+      appendAuditLog({
+        sessionId: this.sessionId,
+        toolName: tool.name,
+        action: 'denied',
+        status: 'denied',
+        reason,
+        args,
+        timestamp: new Date().toISOString(),
+      });
       this.addToolMessage(messages, tc.id, reason);
       this.eventBus.emit(`message-${this.sessionId}`, {
         type: 'tool-end',
         toolName: tool.name,
+        stepId: currentStepId,
         status: 'denied',
         result: reason,
       });
@@ -638,10 +730,20 @@ export class DefaultStepPipeline extends StepPipeline {
       const filteredArgs = filterToolArgsByDecision(tool.name, args, decision);
       if (!decision.approved || !filteredArgs) {
         const denyMsg = '用户拒绝了修改';
+        appendAuditLog({
+          sessionId: this.sessionId,
+          toolName: tool.name,
+          action: 'denied',
+          status: 'denied',
+          reason: denyMsg,
+          args,
+          timestamp: new Date().toISOString(),
+        });
         this.addToolMessage(messages, tc.id, denyMsg);
         this.eventBus.emit(`message-${this.sessionId}`, {
           type: 'tool-end',
           toolName: tool.name,
+          stepId: currentStepId,
           status: 'denied',
           result: denyMsg,
         });
@@ -656,6 +758,15 @@ export class DefaultStepPipeline extends StepPipeline {
     // 执行工具
     try {
       const result = await tool.execute(args);
+      appendAuditLog({
+        sessionId: this.sessionId,
+        toolName: tool.name,
+        action: 'allowed',
+        status: result.success ? 'done' : 'error',
+        args,
+        output: result.output,
+        timestamp: new Date().toISOString(),
+      });
       console.log(`✅ ${tool.name}: ${result.output.slice(0, 50)}`);
       await this.config.policy.postExecute(tool, args, result);
       
@@ -683,6 +794,7 @@ export class DefaultStepPipeline extends StepPipeline {
           this.eventBus.emit(`message-${this.sessionId}`, {
             type: 'tool-end',
             toolName: tool.name,
+            stepId: currentStepId,
             status: 'error',
             result: errorMsg,
           });
@@ -698,11 +810,39 @@ export class DefaultStepPipeline extends StepPipeline {
       if (currentChange && options.changeCollector) {
         options.changeCollector.push(currentChange);
       }
+      if (tool.name === 'apply_patch') {
+        const checkpoint = result.metadata?.checkpoint;
+        if (checkpoint) {
+          (this as any).setRuntimeData?.('applyPatchCheckpoint', checkpoint);
+        } else {
+          (this as any).clearRuntimeData?.('applyPatchCheckpoint');
+        }
+      }
+
+      if (sessionControlStore.matchesPause(this.sessionId, {
+        stepId: currentStepId,
+        scope: 'verification',
+      }) || sessionControlStore.matchesPause(this.sessionId, {
+        stepId: currentStepId,
+        scope: 'session',
+      })) {
+        appendAuditLog({
+          sessionId: this.sessionId,
+          toolName: tool.name,
+          action: 'paused',
+          status: 'paused',
+          args,
+          output: result.output,
+          timestamp: new Date().toISOString(),
+        });
+        return false;
+      }
 
       this.addToolMessage(messages, tc.id, result.output);
       this.eventBus.emit(`message-${this.sessionId}`, {
         type: 'tool-end',
         toolName: tool.name,
+        stepId: currentStepId,
         status: result.success ? 'done' : 'error',
         result: result.output,
       });
@@ -715,10 +855,23 @@ export class DefaultStepPipeline extends StepPipeline {
         const initialChanges = currentChange ? [currentChange] : [];
         this.eventBus.emit(`message-${this.sessionId}`, {
           type: 'test-result',
-          summary: verification.passed ? '自动测试通过' : '自动测试失败',
+          summary: verification.incomplete ? '自动测试已暂停' : verification.passed ? '自动测试通过' : '自动测试失败',
           command: verification.commands.join(' && '),
           output: verification.output,
         });
+
+        if (verification.incomplete) {
+          appendAuditLog({
+            sessionId: this.sessionId,
+            toolName: tool.name,
+            action: 'paused',
+            status: 'paused',
+            args,
+            output: verification.output,
+            timestamp: new Date().toISOString(),
+          });
+          return false;
+        }
 
         let repairSummary: { attempted: boolean; success: boolean; changes: Array<{ kind: 'initial' | 'repair'; toolName: string; changedFiles: string[]; diff?: string }> } | undefined;
         if (!verification.passed) {
@@ -837,6 +990,7 @@ export class DefaultStepPipeline extends StepPipeline {
       this.eventBus.emit(`message-${this.sessionId}`, {
         type: 'tool-end',
         toolName: tool.name,
+        stepId: currentStepId,
         status: 'error',
         result: err.message,
       });
@@ -849,7 +1003,59 @@ export class DefaultStepPipeline extends StepPipeline {
   }
 
   protected async runVerification(changedFiles: string[]) {
-    return runAutoVerification(changedFiles, (this.config.policy as any)?.options?.workspaceRoot);
+    const workspaceRoot = (this.config.policy as any)?.options?.workspaceRoot;
+    const commands = (await import('./auto-verification')).recommendVerificationCommands(changedFiles);
+    const bash = new BashTool({ workspaceRoot });
+    const pipeline = this as any;
+    const checkpoint = pipeline.getRuntimeData?.('verificationCheckpoint') as VerificationCheckpoint | undefined;
+
+    const result = await runCheckpointedVerification(
+      commands,
+      (command) => bash.execute({ command, timeout: 120000 }),
+      {
+        sessionId: this.sessionId,
+        resumeFrom: checkpoint,
+        onCheckpoint: (value) => {
+          if (value) {
+            pipeline.setRuntimeData?.('verificationCheckpoint', value);
+          } else {
+            pipeline.clearRuntimeData?.('verificationCheckpoint');
+          }
+        },
+        shouldPause: () => {
+          const currentStepId = this.resolveCurrentPlanStepId();
+          return sessionControlStore.matchesPause(this.sessionId, {
+            stepId: currentStepId,
+            scope: 'verification',
+          }) || sessionControlStore.matchesPause(this.sessionId, {
+            stepId: currentStepId,
+            scope: 'session',
+          });
+        },
+      },
+    );
+
+    return result;
+  }
+
+  protected resolveCurrentPlanStepId(): number | undefined {
+    const pipeline = this as any;
+    if (typeof pipeline.currentStepIndex !== 'number' || !Array.isArray(pipeline.plan?.steps)) {
+      return undefined;
+    }
+    return pipeline.plan.steps[pipeline.currentStepIndex]?.stepId;
+  }
+
+  public setRuntimeData(key: string, value: unknown) {
+    this.runtimeData[key] = value;
+  }
+
+  public getRuntimeData<T = unknown>(key: string): T | undefined {
+    return this.runtimeData[key] as T | undefined;
+  }
+
+  public clearRuntimeData(key: string) {
+    delete this.runtimeData[key];
   }
 
   protected promoteWriteToPatch(allTools: any[], args: Record<string, any>, writeTool: any) {

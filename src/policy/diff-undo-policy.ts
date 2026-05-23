@@ -6,6 +6,7 @@ import { generateUnifiedDiff } from '../utils/diff';
 import { appendAuditLog } from '../utils/logger';
 import { resolveWorkspacePath } from '../tools/workspace';
 import { StagedWriteManager } from '../core/write-protocol';
+import { classifyCommandRisk } from '../tools/bash';
 
 export type PermissionLevel = 'default' | 'acceptEdits' | 'bypassPermissions' | 'readOnly';
 type OperationType = 'read' | 'write' | 'execute' | 'network';
@@ -161,16 +162,4 @@ export class DiffUndoPolicy extends Policy {
 function resolvePolicyPath(workspaceRoot: string | undefined, filePath: string) {
   if (!workspaceRoot) return path.resolve(process.cwd(), filePath);
   return resolveWorkspacePath(workspaceRoot, filePath);
-}
-
-function classifyCommandRisk(command: string): { riskLevel: 'low' | 'medium' | 'high'; requiresConfirmation: boolean } {
-  const normalized = command.trim();
-  if (!normalized) return { riskLevel: 'low', requiresConfirmation: false };
-  if (/(rm\s+-rf|git\s+reset\s+--hard|mkfs|dd\s+if=|shutdown|reboot|:\(\)\s*\{)/.test(normalized)) {
-    return { riskLevel: 'high', requiresConfirmation: true };
-  }
-  if (/(git\s+clean\s+-fd|mv\s+.+\s+\/|chmod\s+-R|chown\s+-R)/.test(normalized)) {
-    return { riskLevel: 'medium', requiresConfirmation: true };
-  }
-  return { riskLevel: 'low', requiresConfirmation: false };
 }

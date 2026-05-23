@@ -1,23 +1,31 @@
 import React from 'react';
-import { Steps, Tag, Progress } from 'antd';
+import { Steps, Tag, Progress, Button, Space } from 'antd';
 import {
   CheckCircleOutlined,
   SyncOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
+  PauseOutlined,
+  StepForwardOutlined,
+  RedoOutlined,
+  CaretRightOutlined,
 } from '@ant-design/icons';
-import type { PlanStep } from '../types/messages';
+import type { CurrentExecutionState, PlanStep } from '../types/messages';
+import { useChatContext } from '../providers/ChatProvider';
 
 interface Props {
   goal: string;
   steps: PlanStep[];
   replanReason?: string;
+  currentExecution?: CurrentExecutionState;
 }
 
-export default function TaskPlanView({ goal, steps, replanReason }: Props) {
+export default function TaskPlanView({ goal, steps, replanReason, currentExecution }: Props) {
+  const { sendPlanControl } = useChatContext();
   const completed = steps.filter(s => s.status === 'done').length;
   const total = steps.length;
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const runningStep = steps.find((step) => step.status === 'running');
 
   return (
     <div style={{ margin: '16px 0', padding: '16px', background: '#f0f5ff', borderRadius: 8 }}>
@@ -30,6 +38,43 @@ export default function TaskPlanView({ goal, steps, replanReason }: Props) {
           ⚠️ {replanReason}
         </div>
       )}
+      <Space size={8} style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+        <Button size="small" icon={<PauseOutlined />} onClick={() => sendPlanControl('pause', runningStep?.stepId, { scope: 'step' })}>
+          暂停步骤
+        </Button>
+        <Button size="small" icon={<CaretRightOutlined />} onClick={() => sendPlanControl('resume', runningStep?.stepId, { scope: 'step' })}>
+          继续
+        </Button>
+        <Button
+          size="small"
+          icon={<PauseOutlined />}
+          disabled={!currentExecution?.toolName}
+          onClick={() => sendPlanControl('pause', currentExecution?.stepId, { scope: 'tool', toolName: currentExecution?.toolName })}
+        >
+          暂停工具
+        </Button>
+        <Button
+          size="small"
+          icon={<PauseOutlined />}
+          disabled={currentExecution?.phase !== 'verification'}
+          onClick={() => sendPlanControl('pause', currentExecution?.stepId, { scope: 'verification' })}
+        >
+          暂停验证
+        </Button>
+        <Button size="small" icon={<StepForwardOutlined />} onClick={() => sendPlanControl('skip', runningStep?.stepId)}>
+          跳过
+        </Button>
+        <Button size="small" icon={<RedoOutlined />} onClick={() => sendPlanControl('retry', runningStep?.stepId)}>
+          重试
+        </Button>
+      </Space>
+      {currentExecution ? (
+        <div style={{ marginBottom: 12, fontSize: 12, color: '#595959' }}>
+          当前执行：{currentExecution.phase || 'idle'}
+          {currentExecution.toolName ? ` / ${currentExecution.toolName}` : ''}
+          {currentExecution.summary ? ` / ${currentExecution.summary}` : ''}
+        </div>
+      ) : null}
       <Progress percent={percent} size="small" style={{ marginBottom: 16 }} />
       <Steps
         direction="vertical"

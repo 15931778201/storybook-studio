@@ -6,7 +6,6 @@ import { promisify } from 'util';
 import { appendAuditLog } from '../utils/logger';
 import { resolveWorkspaceRoot, WorkspaceToolOptions } from './workspace';
 
-// 扩展execAsync的类型定义以支持cwd选项
 const execAsync = promisify(exec) as (
   command: string, 
   options?: { 
@@ -22,11 +21,18 @@ function shellQuote(arg: string): string {
   return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 
+export interface BashRiskClassification {
+  riskLevel: 'low' | 'medium' | 'high';
+  requiresConfirmation: boolean;
+  policy: 'allow' | 'confirm' | 'deny';
+}
+
 export class BashTool extends Tool {
   name = 'bash';
   description = '在安全沙箱中执行 bash 命令';
   parameters = z.object({
     command: z.string().describe('要执行的 bash 命令'),
+    args: z.array(z.string()).optional().describe('可选参数数组，会与 command 一起拼接'),
     timeout: z.number().optional().default(30).describe('超时时间（秒）'),
   });
   
@@ -50,10 +56,12 @@ export class BashTool extends Tool {
   constructor(private options: WorkspaceToolOptions = {}) { super(); }
 
   protected async executeCore(validatedParams: any) {
-    const { command, timeout } = validatedParams;
-    const safeInternal = Math.min(Math.max(Number(timeout) || 30_000, 1000), 2_147_483_647);
+    const { command, args = [], timeout } = validatedParams;
+    const timeoutMs = Math.min(Math.max((Number(timeout) || 30) * 1000, 1000), 2_147_483_647);
 
-    const cmd = command;
+    const cmd = args.length > 0
+      ? [command, ...args.map(shellQuote)].join(' ')
+      : command;
     const risk = classifyCommandRisk(cmd);
 
     return safeExecute(
@@ -62,7 +70,7 @@ export class BashTool extends Tool {
         try {
           const { stdout, stderr } = await execAsync(cmd, {
             shell: true,
-            timeout: safeInternal,
+            timeout: timeoutMs,
             maxBuffer: 5 * 1024 * 1024,
             cwd: resolveWorkspaceRoot(this.options.workspaceRoot),
           });
@@ -80,10 +88,18 @@ export class BashTool extends Tool {
           const partialStderr = error.stderr || '';
           let output = partialStdout + (partialStderr ? `\n[STDERR] ${partialStderr}` : '');
           if (error.killed) {
-            output += `\n⚠️ 命令超时 (${safeInternal}ms)`;
-          } else {
-            output += `\n[退出码 ${error.code}]`;
+            output += `\n⚠️ 命令超时 (${timeoutMs}ms)`;
+            appendAuditLog({
+              tool: this.name,
+              command: cmd,
+              riskLevel: risk.riskLevel,
+              requiresConfirmation: risk.requiresConfirmation,
+              timestamp: new Date().toISOString(),
+            });
+            return { success: false, output, metadata: risk };
           }
+
+          output += `\n[退出码 ${error.code}]`;
           appendAuditLog({
             tool: this.name,
             command: cmd,
@@ -91,20 +107,27 @@ export class BashTool extends Tool {
             requiresConfirmation: risk.requiresConfirmation,
             timestamp: new Date().toISOString(),
           });
-          return { success: false, output, metadata: risk };
+          return { success: true, output, metadata: risk };
         }
       },
-      { timeout: safeInternal }
+      { timeout: timeoutMs }
     );
   }
 }
 
-function classifyCommandRisk(command: string): { riskLevel: 'low' | 'medium' | 'high'; requiresConfirmation: boolean } {
-  if (/(rm\s+-rf|git\s+reset\s+--hard|mkfs|dd\s+if=|shutdown|reboot|:\(\)\s*\{)/.test(command)) {
-    return { riskLevel: 'high', requiresConfirmation: true };
+export function classifyCommandRisk(command: string): BashRiskClassification {
+  const normalized = command.trim();
+  if (!normalized) {
+    return { riskLevel: 'low', requiresConfirmation: false, policy: 'allow' };
   }
-  if (/(git\s+clean\s+-fd|chmod\s+-R|chown\s+-R)/.test(command)) {
-    return { riskLevel: 'medium', requiresConfirmation: true };
+
+  if (/(^|\s)(rm\s+-rf|git\s+reset\s+--hard|git\s+clean\s+-fdx?|mkfs|dd\s+if=|shutdown|reboot|:\(\)\s*\{|sudo\s+rm\b)/.test(normalized)) {
+    return { riskLevel: 'high', requiresConfirmation: true, policy: 'deny' };
   }
-  return { riskLevel: 'low', requiresConfirmation: false };
+
+  if (/(^|\s)(bun\s+install|npm\s+install|pnpm\s+install|yarn\s+install|chmod\s+-R|chown\s+-R|docker\s+build|git\s+checkout\b|git\s+switch\b)/.test(normalized)) {
+    return { riskLevel: 'medium', requiresConfirmation: true, policy: 'confirm' };
+  }
+
+  return { riskLevel: 'low', requiresConfirmation: false, policy: 'allow' };
 }

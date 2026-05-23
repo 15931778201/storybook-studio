@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { Upload, Button, message, Image } from 'antd';
 import { PictureOutlined, DeleteOutlined } from '@ant-design/icons';
-export default function ImageUpload({ onImageReady, onClear, disabled }: { onImageReady: (b64: string) => void; onClear: () => void; disabled?: boolean }) {
+import { buildUploadedImageAttachment, type UploadedImageAttachment } from '../utils/chat-upload';
+
+export default function ImageUpload({ onImageReady, onClear, disabled }: { onImageReady: (attachment: UploadedImageAttachment) => void; onClear: () => void; disabled?: boolean }) {
   const [preview, setPreview] = useState<string | null>(null);
   const handleUpload = async (file: File) => {
     const fd = new FormData(); fd.append('image', file);
     const res = await fetch('/api/upload/image', { method: 'POST', body: fd }); const data = await res.json();
-    if (data.success) { setPreview(data.dataUri); onImageReady(data.dataUri.split(',')[1]); message.success('已上传'); } else message.error('失败');
+    const attachment = buildUploadedImageAttachment(data);
+    if (attachment) { setPreview(attachment.previewUrl); onImageReady(attachment); message.success('已上传'); } else message.error('失败');
     return false;
   };
   const clear = () => { setPreview(null); onClear(); };

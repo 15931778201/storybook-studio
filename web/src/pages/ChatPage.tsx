@@ -4,16 +4,28 @@ import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import Sidebar from '../components/Sidebar';
 import WorkspaceTabs from '../components/WorkspaceTabs';
 import ChatLayout from '../components/ChatLayout';
+import WorkspaceStatusPanel from '../components/WorkspaceStatusPanel';
 import { useChatContext } from '../providers/ChatProvider';
 import { useConfirm } from '../hooks/useConfirm';
+import {
+  loadWorkspaceStatusCollapsed,
+  saveWorkspaceStatusCollapsed,
+} from '../utils/workspace-status-panel-state';
 
 const ConfirmDialog = lazy(() => import('../components/ConfirmDialog'));
 
 export default function ChatPage() {
   const [conversationsOpen, setConversationsOpen] = useState(() => window.innerWidth > 768);
+  const [workspaceStatusCollapsed, setWorkspaceStatusCollapsed] = useState(() =>
+    loadWorkspaceStatusCollapsed(window.localStorage, window.innerWidth),
+  );
   const { confirmRequest } = useChatContext();
   const { handleConfirm, handleReject } = useConfirm();
   const sidebarWidth = 280;
+  const handleWorkspaceStatusCollapsedChange = (collapsed: boolean) => {
+    setWorkspaceStatusCollapsed(collapsed);
+    saveWorkspaceStatusCollapsed(window.localStorage, collapsed);
+  };
 
   return (
     <div style={{ flex: 1, display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
@@ -70,7 +82,13 @@ export default function ChatPage() {
         }}>
           <WorkspaceTabs />
         </div>
-        <ChatLayout />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          <ChatLayout />
+          <WorkspaceStatusPanel
+            collapsed={workspaceStatusCollapsed}
+            onCollapsedChange={handleWorkspaceStatusCollapsedChange}
+          />
+        </div>
         {confirmRequest && (
           <Suspense fallback={<div>加载中...</div>}>
             <ConfirmDialog

@@ -1,13 +1,32 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import type { ChatMessage, ConfirmRequest, ThinkingStep, PlanStep, Workspace } from '../types/messages';
 import { mergeSummaryIntoAssistantMessage, shouldSuppressStandaloneSystemMessage } from '../utils/chat-summary-flow';
+import { buildChatPersistenceState, buildDefaultPersistenceState, hydrateChatPersistenceState } from '../utils/chat-session-state';
+import { createPersistenceScheduler } from '../utils/chat-persistence-scheduler';
+import {
+  createInitialChatRunState,
+  markChatRunDismissed,
+  markChatRunResumed,
+  markChatRunRunning,
+  markChatRunStopped,
+  type ChatRunState,
+} from '../utils/chat-run-state';
+import { buildImageStreamParams, type UploadedImageAttachment } from '../utils/chat-upload';
+import { BUILTIN_ROLES } from '../data/builtinRoles';
+import {
+  buildRoleSwitchMessage,
+  findRoleByCommandTarget,
+  loadCustomRoles,
+  parseRoleSwitchCommand,
+} from '../utils/role-command';
 
 interface ChatContextValue {
   messages: ChatMessage[];
   setMessages: (v: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void;
-  sendMessage: (text: string, image?: string | null) => void;
+  sendMessage: (text: string, image?: UploadedImageAttachment | null) => void;
   isRequesting: boolean;
   abort: () => void;
+  runState: ChatRunState;
   activeConversationId: string;
   setActiveConversationId: (id: string) => void;
   confirmRequest: ConfirmRequest | null;
@@ -20,6 +39,12 @@ interface ChatContextValue {
   setActiveRole: (r: any | null) => void;
   conversationTitles: Record<string, string>;
   updateConversationTitle: (id: string, title: string) => void;
+  conversationIds: string[];
+  createConversation: () => string;
+  deleteConversation: (id: string) => void;
+  sendPlanControl: (action: 'pause' | 'resume' | 'skip' | 'retry', stepId?: number, extra?: { scope?: 'session' | 'step' | 'tool' | 'verification'; toolName?: string }) => Promise<void>;
+  resumeLastRun: () => Promise<void>;
+  dismissPausedRun: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue>(null!);
@@ -37,11 +62,10 @@ function safeString(v: any): string {
 }
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [activeConversationId, setActiveConversationId] = useState('conv-' + Date.now());
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState('default');
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([
-    { id: 'default', name: '默认工作区', projectPath: '.', knowledgeBaseIds: [] },
-  ]);
+  const initialPersistence = buildDefaultPersistenceState();
+  const [activeConversationId, setActiveConversationId] = useState(initialPersistence.activeConversationId);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(initialPersistence.activeWorkspaceId);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(initialPersistence.workspaces);
   const [activeRole, setActiveRole] = useState<any | null>(() => {
     const saved = localStorage.getItem('activeRoleId');
     return saved ? { id: saved } : { id: 'programmer', name: '全栈程序猿' };
@@ -57,6 +81,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [messageStore, setMessageStore] = useState<Record<string, ChatMessage[]>>({});
+  const [conversationTitles, setConversationTitles] = useState<Record<string, string>>({});
+  const [conversationIds, setConversationIds] = useState<string[]>(initialPersistence.conversationIds);
   const currentKey = `${activeWorkspaceId}:${activeConversationId}`;
   const messages = messageStore[currentKey] || [];
 
@@ -67,18 +93,28 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     updateMessages((prev) => (typeof action === 'function' ? action(prev) : action));
 
   const [isRequesting, setIsRequesting] = useState(false);
+  const [runState, setRunState] = useState<ChatRunState>(() => createInitialChatRunState());
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
-  const [conversationTitles, setConversationTitles] = useState<Record<string, string>>({});
   const updateConversationTitle = useCallback((id: string, title: string) => {
     setConversationTitles((prev) => ({ ...prev, [id]: title }));
   }, []);
   const confirmResolverRef = useRef<((b: boolean) => void) | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const thinkingIdRef = useRef<string | null>(null);
+  const persistenceSchedulerRef = useRef(createPersistenceScheduler<string>({
+    delayMs: 500,
+    save: (payload) => {
+      localStorage.setItem('chat-persistence', payload);
+    },
+  }));
 
   const abort = () => {
+    fetch(`/api/sessions/${activeConversationId}/stop`, {
+      method: 'POST',
+    }).catch(() => {});
     esRef.current?.close();
     setIsRequesting(false);
+    setRunState((prev) => markChatRunStopped(prev));
   };
 
   const resolveConfirm = (approved: boolean, selectedFiles?: Record<string, boolean>) => {
@@ -100,26 +136,156 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setActiveWorkspaceId(ws.id);
   };
 
+  const createConversation = useCallback(() => {
+    const newId = `conv-${Date.now()}`;
+    setConversationIds((prev) => [newId, ...prev.filter((id) => id !== newId)]);
+    setActiveConversationId(newId);
+    return newId;
+  }, []);
+
+  const deleteConversation = useCallback((id: string) => {
+    setConversationIds((prev) => {
+      const next = prev.filter((item) => item !== id);
+      if (id === activeConversationId) {
+        setActiveConversationId(next[0] || createConversation());
+      }
+      return next;
+    });
+    setConversationTitles((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setMessageStore((prev) => {
+      const next = { ...prev };
+      delete next[`${activeWorkspaceId}:${id}`];
+      return next;
+    });
+  }, [activeConversationId, activeWorkspaceId, createConversation]);
+
+  const sendPlanControl = useCallback(async (
+    action: 'pause' | 'resume' | 'skip' | 'retry',
+    stepId?: number,
+    extra?: { scope?: 'session' | 'step' | 'tool' | 'verification'; toolName?: string }
+  ) => {
+    await fetch('/api/agents/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: activeConversationId, action, stepId, ...extra }),
+    });
+  }, [activeConversationId]);
+
+  const resumeLastRun = useCallback(async () => {
+    setIsRequesting(true);
+    setRunState((prev) => markChatRunResumed(prev));
+    try {
+      const result = await fetch(`/api/sessions/${activeConversationId}/resume`, {
+        method: 'POST',
+      }).then((response) => response.json());
+
+      if (result?.ok && result.final) {
+        updateMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: String(result.final),
+            contentType: 'text',
+            timestamp: Date.now(),
+          },
+        ]);
+        setRunState(createInitialChatRunState());
+      } else {
+        setRunState((prev) => markChatRunStopped(prev));
+      }
+    } catch {
+      setRunState((prev) => markChatRunStopped(prev));
+    } finally {
+      setIsRequesting(false);
+    }
+  }, [activeConversationId, updateMessages]);
+
+  const dismissPausedRun = useCallback(() => {
+    setRunState((prev) => markChatRunDismissed(prev));
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('chat-persistence');
+      const hydrated = raw ? hydrateChatPersistenceState(raw) : buildDefaultPersistenceState();
+      setActiveConversationId(hydrated.activeConversationId);
+      setActiveWorkspaceId(hydrated.activeWorkspaceId);
+      setConversationIds(hydrated.conversationIds);
+      setConversationTitles(hydrated.conversationTitles);
+      setMessageStore(hydrated.messageStore);
+      setWorkspaces(hydrated.workspaces);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const payload = buildChatPersistenceState({
+        activeConversationId,
+        activeWorkspaceId,
+        conversationIds,
+        conversationTitles,
+        messageStore,
+        workspaces,
+      });
+      persistenceSchedulerRef.current.schedule(JSON.stringify(payload));
+    } catch {}
+  }, [activeConversationId, activeWorkspaceId, conversationIds, conversationTitles, messageStore, workspaces]);
+
+  useEffect(() => {
+    return () => persistenceSchedulerRef.current.flush();
+  }, []);
+
   const sendMessage = useCallback(
-    async (text: string, image?: string | null) => {
+    async (text: string, image?: UploadedImageAttachment | null) => {
       if (!text.trim() || isRequesting) return;
 
       const trimmed = text.trim();
+      const roleCommand = parseRoleSwitchCommand(trimmed);
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'user',
         content: trimmed,
         contentType: 'text',
         timestamp: Date.now(),
-        imageBase64: image || undefined,
+        imageBase64: image?.previewUrl,
       };
       updateMessages((prev) => [...prev, userMsg]);
+
+      if (roleCommand) {
+        const roles = [...BUILTIN_ROLES, ...loadCustomRoles(localStorage)];
+        const matchedRole = findRoleByCommandTarget(roles, roleCommand.target);
+        const assistantContent = matchedRole
+          ? buildRoleSwitchMessage(matchedRole)
+          : `未找到角色：${roleCommand.target}`;
+        if (matchedRole) {
+          handleSetActiveRole(matchedRole);
+        }
+        updateMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: assistantContent,
+            contentType: 'text',
+            timestamp: Date.now(),
+            metadata: matchedRole ? { roleId: matchedRole.id, roleName: matchedRole.name } : undefined,
+          },
+        ]);
+        return;
+      }
 
       if (!conversationTitles[activeConversationId]) {
         const title = trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed;
         updateConversationTitle(activeConversationId, title);
       }
+      setConversationIds((prev) => prev.includes(activeConversationId) ? prev : [activeConversationId, ...prev]);
       setIsRequesting(true);
+      setRunState((prev) => markChatRunRunning(prev));
 
       const assistantId = crypto.randomUUID();
       thinkingIdRef.current = assistantId;
@@ -130,19 +296,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       const params = new URLSearchParams({ input: text });
 
-      if (image) {
-        try {
-          const blob = await (await fetch(image)).blob();
-          const formData = new FormData();
-          formData.append('image', blob, 'chat-image.jpg');
-          const uploadRes = await fetch('/api/upload/image', { method: 'POST', body: formData });
-          const uploadData = await uploadRes.json();
-          if (uploadData.tempPath) {
-            params.append('imageRef', uploadData.tempPath);
-          }
-        } catch (e) {
-          console.error('图片上传失败:', e);
-        }
+      const imageParams = buildImageStreamParams(image || null);
+      if (imageParams.imageRef) {
+        params.append('imageRef', imageParams.imageRef);
       }
 
       const activeWs = workspaces.find((w) => w.id === activeWorkspaceId);
@@ -224,7 +380,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     ? { ...s, status: data.status, duration: data.duration ?? s.duration, resultSummary: data.resultSummary ?? s.resultSummary }
                     : s,
                 );
-                return { ...m, metadata: { ...m.metadata, steps: updatedSteps } };
+                return {
+                  ...m,
+                  metadata: {
+                    ...m.metadata,
+                    steps: updatedSteps,
+                    currentExecution: {
+                      stepId: data.stepId,
+                      phase: data.status === 'running' ? 'step' : data.status === 'pending' ? 'idle' : m.metadata?.currentExecution?.phase,
+                      status: data.status === 'pending' ? 'paused' : data.status,
+                      summary: data.resultSummary,
+                    },
+                  },
+                };
               }));
               break;
 
@@ -246,6 +414,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             case 'tool-start':
               updateMessages((prev) =>
                 prev.map((m) => {
+                  if (m.contentType === 'plan' && m.metadata?.steps) {
+                    return {
+                      ...m,
+                      metadata: {
+                        ...m.metadata,
+                        currentExecution: {
+                          stepId: data.stepId,
+                          phase: 'tool',
+                          toolName: data.toolName,
+                          status: 'running',
+                        },
+                      },
+                    };
+                  }
                   if (m.id !== thinkingIdRef.current) return m;
                   const step: ThinkingStep = { id: crypto.randomUUID(), toolName: data.toolName, args: data.args, result: '', status: 'running' };
                   return { ...m, steps: [...(m.steps || []), step] };
@@ -256,6 +438,21 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             case 'tool-end':
               updateMessages((prev) =>
                 prev.map((m) => {
+                  if (m.contentType === 'plan' && m.metadata?.steps) {
+                    return {
+                      ...m,
+                      metadata: {
+                        ...m.metadata,
+                        currentExecution: {
+                          stepId: data.stepId,
+                          phase: data.status === 'paused' ? 'tool' : 'verification',
+                          toolName: data.toolName,
+                          status: data.status === 'paused' ? 'paused' : 'running',
+                          summary: data.result,
+                        },
+                      },
+                    };
+                  }
                   if (m.id !== thinkingIdRef.current) return m;
                   return {
                     ...m,
@@ -270,6 +467,21 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               break;
 
             case 'test-result':
+              updateMessages((prev) => prev.map((m) => {
+                if (m.contentType !== 'plan' || !m.metadata?.steps) return m;
+                return {
+                  ...m,
+                  metadata: {
+                    ...m.metadata,
+                    currentExecution: {
+                      ...(m.metadata.currentExecution || {}),
+                      phase: 'verification',
+                      status: /失败/.test(String(data.summary || '')) ? 'error' : 'done',
+                      summary: data.summary,
+                    },
+                  },
+                };
+              }));
               if (!shouldSuppressStandaloneSystemMessage(data.type)) {
                 updateMessages((prev) => [
                   ...prev,
@@ -353,6 +565,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               thinkingIdRef.current = null;
               es.close();
               setIsRequesting(false);
+              setRunState(createInitialChatRunState());
               break;
 
             case 'error':
@@ -364,6 +577,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               thinkingIdRef.current = null;
               es.close();
               setIsRequesting(false);
+              setRunState(createInitialChatRunState());
               break;
           }
         } catch {}
@@ -380,13 +594,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         }
         es.close();
         setIsRequesting(false);
+        setRunState((prev) => markChatRunStopped(prev));
       };
     },
-    [activeConversationId, activeRole, isRequesting, updateMessages, conversationTitles, updateConversationTitle, workspaces, activeWorkspaceId],
+    [activeConversationId, activeRole, isRequesting, updateMessages, conversationTitles, updateConversationTitle, workspaces, activeWorkspaceId, handleSetActiveRole],
   );
 
   useEffect(() => {
     setIsRequesting(false);
+    setRunState(createInitialChatRunState());
   }, [activeConversationId, activeWorkspaceId]);
 
   return (
@@ -397,6 +613,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         sendMessage,
         isRequesting,
         abort,
+        runState,
         activeConversationId,
         setActiveConversationId,
         confirmRequest,
@@ -409,6 +626,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setActiveRole: handleSetActiveRole,
         conversationTitles,
         updateConversationTitle,
+        conversationIds,
+        createConversation,
+        deleteConversation,
+        sendPlanControl,
+        resumeLastRun,
+        dismissPausedRun,
       }}
     >
       {children}

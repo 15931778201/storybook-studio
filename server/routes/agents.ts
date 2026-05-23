@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sessionControlStore } from '../../src/storage/session-control-store';
 
 const agent = new Hono();
 
@@ -36,6 +37,24 @@ agent.get('/result/:jobId', async (c) => {
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
   }
+});
+
+agent.post('/control', async (c) => {
+  const { sessionId, action, stepId } = await c.req.json();
+  if (!sessionId || !action) {
+    return c.json({ error: 'sessionId 和 action 为必填项' }, 400);
+  }
+  const state = sessionControlStore.set({ sessionId, action, stepId });
+  return c.json(state);
+});
+
+agent.get('/control/:sessionId', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const state = sessionControlStore.get(sessionId);
+  if (!state) {
+    return c.json({ sessionId, action: 'resume', updatedAt: 0 });
+  }
+  return c.json(state);
 });
 
 export { agent };

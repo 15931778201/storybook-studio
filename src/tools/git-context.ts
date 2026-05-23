@@ -20,6 +20,16 @@ export class GitContextTool extends Tool {
     const { commits, diffLines } = validatedParams as z.infer<typeof this.parameters>;
     return safeExecute(this.name, async () => {
       const workspaceRoot = resolveWorkspaceRoot(this.options.workspaceRoot);
+      if (!isGitRepository(workspaceRoot)) {
+        const output = [
+          `Workspace: ${workspaceRoot}`,
+          'Recent commits: none',
+          'Diff stat: none',
+          'Diff preview: none',
+        ].join('\n\n');
+        return { success: true, output, metadata: { cacheHit: false, git: false } };
+      }
+
       const cacheKey = `git-context:${workspaceRoot}:${commits}:${diffLines}`;
       const cached = cache.get(cacheKey);
       if (cached) {
@@ -53,5 +63,19 @@ function runGit(cwd: string, args: string[]) {
     }).trim();
   } catch {
     return '';
+  }
+}
+
+function isGitRepository(cwd: string) {
+  try {
+    const output = execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd,
+      timeout: 3000,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return output === 'true';
+  } catch {
+    return false;
   }
 }
